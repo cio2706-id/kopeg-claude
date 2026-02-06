@@ -1,6 +1,6 @@
 const ACCURATE_BASE_URL =
-  process.env.ACCURATE_API_URL || "https://account.accurate.id";
-const ACCURATE_SESSION = process.env.ACCURATE_SESSION || "";
+  process.env.ACCURATE_HOST || "https://account.accurate.id";
+const ACCURATE_ACCESS_TOKEN = process.env.ACCURATE_ACCESS_TOKEN || "";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 
@@ -31,8 +31,8 @@ async function accurateRequest<T>(
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${ACCURATE_SESSION}`,
-        "X-Session-ID": ACCURATE_SESSION,
+        Authorization: `Bearer ${ACCURATE_ACCESS_TOKEN}`,
+        "X-Session-ID": ACCURATE_ACCESS_TOKEN,
       },
     });
 
