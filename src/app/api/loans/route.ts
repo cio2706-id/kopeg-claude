@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { loans, approvals, users } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { calculateMonthlyInstallment } from "@/lib/utils";
+import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -24,13 +24,18 @@ const INTEREST_RATES: Record<string, number> = {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
 
     if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db.select().from(users).where(eq(users.authId, authUser.id));
+    const [dbUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -40,64 +45,73 @@ export async function POST(request: NextRequest) {
     const parsed = loanSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid data", details: parsed.error.issues }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid data", details: parsed.error.issues },
+        { status: 400 }
+      );
     }
 
-    const interestRate = parsed.data.interestRate ?? INTEREST_RATES[parsed.data.loanType];
+    const interestRate =
+      parsed.data.interestRate ?? INTEREST_RATES[parsed.data.loanType];
     const monthlyInstallment = calculateMonthlyInstallment(
       parsed.data.amount,
       interestRate,
       parsed.data.tenorMonths
     );
 
+    const trackingNumber = generateTrackingNumber("LN");
+
     const [loan] = await db
       .insert(loans)
       .values({
         userId: dbUser.id,
+        trackingNumber,
         loanType: parsed.data.loanType,
         amount: parsed.data.amount.toString(),
         interestRate: interestRate.toString(),
         tenorMonths: parsed.data.tenorMonths,
         monthlyInstallment: Math.round(monthlyInstallment).toString(),
         purpose: parsed.data.purpose,
-        status: "pending_staff",
+        status: "pending_treasury",
       })
       .returning();
 
-    // Create approval chain: staff -> manager -> bendahara -> ketua
-    const approvalSteps = [
-      { role: "staff" as const, order: 1 },
-      { role: "manager" as const, order: 2 },
-      { role: "bendahara" as const, order: 3 },
-      { role: "ketua" as const, order: 4 },
-    ];
-
+    // Create approval chain per PDF: Staf Treasury → Manager → Bendahara → Ketua
     await db.insert(approvals).values(
-      approvalSteps.map((step) => ({
+      LOAN_APPROVAL_STEPS.map((step) => ({
         referenceType: "loan",
         referenceId: loan.id,
         approverRole: step.role,
         stepOrder: step.order,
+        stepLabel: step.label,
       }))
     );
 
-    return NextResponse.json({ loan });
+    return NextResponse.json({ loan, trackingNumber });
   } catch (error) {
     console.error("Failed to create loan:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
 
 export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
 
     if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db.select().from(users).where(eq(users.authId, authUser.id));
+    const [dbUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -111,6 +125,9 @@ export async function GET() {
     return NextResponse.json({ loans: userLoans });
   } catch (error) {
     console.error("Failed to fetch loans:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

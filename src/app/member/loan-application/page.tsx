@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { FileText, ArrowLeft, Calculator, Upload, Send } from "lucide-react";
+import { FileText, ArrowLeft, Calculator, Send } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency, calculateMonthlyInstallment, LOAN_TYPE_LABELS } from "@/lib/utils";
 
@@ -20,8 +19,7 @@ export default function LoanApplicationPage() {
   const [purpose, setPurpose] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const router = useRouter();
+  const [trackingNumber, setTrackingNumber] = useState<string | null>(null);
 
   const interestRate = loanType ? INTEREST_RATES[loanType] || 12 : 0;
   const monthlyInstallment =
@@ -53,7 +51,8 @@ export default function LoanApplicationPage() {
         throw new Error(data.error || "Gagal mengajukan pinjaman");
       }
 
-      setSuccess(true);
+      const data = await res.json();
+      setTrackingNumber(data.trackingNumber);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {
@@ -61,7 +60,7 @@ export default function LoanApplicationPage() {
     }
   }
 
-  if (success) {
+  if (trackingNumber) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow p-8 text-center">
@@ -69,9 +68,19 @@ export default function LoanApplicationPage() {
             <Send className="w-8 h-8 text-green-600" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Pengajuan Berhasil!</h2>
-          <p className="text-sm text-gray-600 mb-6">
-            Pengajuan pinjaman Anda sedang diproses. Anda akan diberitahu saat ada update.
+          <div className="mb-4">
+            <p className="text-xs text-gray-500">Nomor Tracking</p>
+            <p className="text-lg font-mono font-bold text-blue-600">{trackingNumber}</p>
+          </div>
+          <p className="text-sm text-gray-600 mb-2">
+            Pengajuan pinjaman Anda akan direview melalui alur berikut:
           </p>
+          <div className="text-xs text-gray-500 mb-6 space-y-1">
+            <p>1. Staf Treasury (Review & Analisa Kredit)</p>
+            <p>2. Manager (Review & Evaluasi Keuangan)</p>
+            <p>3. Bendahara (Review & Evaluasi Keuangan)</p>
+            <p>4. Ketua (Persetujuan Akhir)</p>
+          </div>
           <Link
             href="/member/dashboard"
             className="inline-block bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition"
@@ -186,6 +195,13 @@ export default function LoanApplicationPage() {
               </div>
             </div>
           )}
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <p className="text-sm text-amber-800">
+              Setelah diajukan, pinjaman akan direview oleh Staf Treasury (analisa kredit), Manager, Bendahara,
+              dan Ketua untuk persetujuan akhir. Pencairan melalui proses SPP dan transfer bank.
+            </p>
+          </div>
 
           {error && <p className="text-red-600 text-sm">{error}</p>}
 

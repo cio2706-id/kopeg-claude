@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { paymentRequests, approvals } from "@/lib/db/schema";
+import { paymentRequests, approvals, users } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { generateTrackingNumber } from "@/lib/utils";
 import { eq } from "drizzle-orm";
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     // Create approval records for the approval chain
     const approvalSteps = [
-      { role: "staff" as const, order: 1 },
+      { role: "staf_treasury" as const, order: 1 },
       { role: "manager" as const, order: 2 },
       { role: "bendahara" as const, order: 3 },
     ];

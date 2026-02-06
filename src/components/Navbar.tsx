@@ -19,8 +19,10 @@ export default function Navbar() {
             </div>
           </Link>
 
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-5">
             <Link href="/" className="text-sm text-gray-600 hover:text-blue-600 transition">Beranda</Link>
+            <Link href="/po/request" className="text-sm text-gray-600 hover:text-blue-600 transition">Ajukan PO</Link>
+            <Link href="/po/track" className="text-sm text-gray-600 hover:text-blue-600 transition">Lacak PO</Link>
             <Link href="/payment-tracker" className="text-sm text-gray-600 hover:text-blue-600 transition">Lacak Pembayaran</Link>
             <Link href="/member/login" className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Login Anggota</Link>
             <Link href="/pengurus/login" className="text-sm border border-blue-600 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition">Login Pengurus</Link>
@@ -34,6 +36,8 @@ export default function Navbar() {
         {menuOpen && (
           <div className="md:hidden py-4 border-t space-y-2">
             <Link href="/" className="block px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded" onClick={() => setMenuOpen(false)}>Beranda</Link>
+            <Link href="/po/request" className="block px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded" onClick={() => setMenuOpen(false)}>Ajukan PO</Link>
+            <Link href="/po/track" className="block px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded" onClick={() => setMenuOpen(false)}>Lacak PO</Link>
             <Link href="/payment-tracker" className="block px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded" onClick={() => setMenuOpen(false)}>Lacak Pembayaran</Link>
             <Link href="/member/login" className="block px-3 py-2 text-sm text-blue-600 font-medium" onClick={() => setMenuOpen(false)}>Login Anggota</Link>
             <Link href="/pengurus/login" className="block px-3 py-2 text-sm text-blue-600 font-medium" onClick={() => setMenuOpen(false)}>Login Pengurus</Link>

@@ -17,7 +17,7 @@ export async function GET() {
 const updateUserSchema = z.object({
   id: z.string().uuid(),
   fullName: z.string().min(1).optional(),
-  role: z.enum(["member", "staff", "manager", "bendahara", "sekertaris", "ketua"]).optional(),
+  role: z.enum(["member", "staf_pengadaan", "staf_treasury", "staf_piutang", "staf_akunting", "manager", "bendahara", "sekertaris", "ketua"]).optional(),
   phone: z.string().optional(),
   department: z.string().optional(),
   isActive: z.boolean().optional(),

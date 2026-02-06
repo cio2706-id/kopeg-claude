@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { approvals, loans, paymentRequests, users, employeeData } from "@/lib/db/schema";
+import {
+  approvals,
+  loans,
+  purchaseOrders,
+  paymentRequests,
+  users,
+  employeeData,
+} from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { eq, and, isNull } from "drizzle-orm";
 import {
@@ -9,31 +16,32 @@ import {
   BANK_MANDIRI_COA,
   BANK_MANDIRI_KOPERASI_ACCOUNT,
 } from "@/lib/accurate";
+import { LOAN_STATUS_FLOW } from "@/lib/utils";
 import { z } from "zod";
 
 const approvalSchema = z.object({
   approvalId: z.string().uuid(),
   action: z.enum(["approve", "reject", "adjust"]),
   comments: z.string().optional(),
+  creditAnalysis: z.string().optional(),
+  creditScore: z.string().optional(),
 });
-
-const LOAN_STATUS_FLOW: Record<string, string> = {
-  pending_staff: "pending_manager",
-  pending_manager: "pending_bendahara",
-  pending_bendahara: "pending_ketua",
-  pending_ketua: "approved",
-};
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
 
     if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db.select().from(users).where(eq(users.authId, authUser.id));
+    const [dbUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -43,22 +51,29 @@ export async function POST(request: NextRequest) {
     const parsed = approvalSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid data", details: parsed.error.issues }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid data", details: parsed.error.issues },
+        { status: 400 }
+      );
     }
 
-    // Get approval record
     const [approval] = await db
       .select()
       .from(approvals)
       .where(eq(approvals.id, parsed.data.approvalId));
 
     if (!approval) {
-      return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Approval not found" },
+        { status: 404 }
+      );
     }
 
-    // Verify the user has the correct role
     if (approval.approverRole !== dbUser.role) {
-      return NextResponse.json({ error: "Not authorized for this approval step" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Not authorized for this approval step" },
+        { status: 403 }
+      );
     }
 
     // Update approval record
@@ -72,7 +87,7 @@ export async function POST(request: NextRequest) {
       })
       .where(eq(approvals.id, parsed.data.approvalId));
 
-    // Handle loan approvals
+    // ─── Handle Loan Approvals ───────────────────────────────────────
     if (approval.referenceType === "loan") {
       if (parsed.data.action === "reject") {
         await db
@@ -86,6 +101,23 @@ export async function POST(request: NextRequest) {
           .where(eq(loans.id, approval.referenceId));
 
         if (loan) {
+          // Staf Treasury step: save credit analysis data
+          if (
+            dbUser.role === "staf_treasury" &&
+            (parsed.data.creditAnalysis || parsed.data.creditScore)
+          ) {
+            await db
+              .update(loans)
+              .set({
+                creditAnalysis: parsed.data.creditAnalysis,
+                creditScore: parsed.data.creditScore,
+                analysisNotes: parsed.data.comments,
+                analyzedBy: dbUser.id,
+                analyzedAt: new Date(),
+              })
+              .where(eq(loans.id, loan.id));
+          }
+
           const nextStatus = LOAN_STATUS_FLOW[loan.status] || loan.status;
           await db
             .update(loans)
@@ -95,7 +127,8 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(loans.id, loan.id));
 
-          // Final approval by ketua - post journal to Accurate
+          // Ketua final approval → move to SPP process, then Staf Treasury
+          // handles SPP via Accurate + bank portal
           if (nextStatus === "approved") {
             const [borrower] = await db
               .select()
@@ -108,8 +141,10 @@ export async function POST(request: NextRequest) {
               .where(eq(employeeData.userId, loan.userId));
 
             const coaCode = LOAN_COA_MAP[loan.loanType] || "110304";
-            const employeeName = empData?.fullName || borrower?.fullName || "Unknown";
+            const employeeName =
+              empData?.fullName || borrower?.fullName || "Unknown";
 
+            // Post SPP journal to Accurate
             const journalResult = await insertJournal({
               transDate: new Date().toISOString().split("T")[0],
               description: `Pencairan Pinjaman ${loan.loanType} - ${employeeName}`,
@@ -135,8 +170,7 @@ export async function POST(request: NextRequest) {
                 .set({
                   accurateJournalId: journalResult.id.toString(),
                   coaCode,
-                  status: "disbursed",
-                  disbursedAt: new Date(),
+                  status: "spp_process",
                   updatedAt: new Date(),
                 })
                 .where(eq(loans.id, loan.id));
@@ -146,7 +180,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle payment request approvals
+    // ─── Handle PO Approvals ─────────────────────────────────────────
+    if (approval.referenceType === "purchase_order") {
+      if (parsed.data.action === "reject") {
+        await db
+          .update(purchaseOrders)
+          .set({ status: "rejected", updatedAt: new Date() })
+          .where(eq(purchaseOrders.id, approval.referenceId));
+      } else if (parsed.data.action === "approve") {
+        const [po] = await db
+          .select()
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.id, approval.referenceId));
+
+        if (po) {
+          if (dbUser.role === "staf_pengadaan") {
+            // Staf Pengadaan approved → move to pending_manager
+            await db
+              .update(purchaseOrders)
+              .set({ status: "pending_manager", updatedAt: new Date() })
+              .where(eq(purchaseOrders.id, po.id));
+          } else if (dbUser.role === "manager") {
+            // Manager approved RAB → move to approved_rab (Staf Treasury takes over)
+            await db
+              .update(purchaseOrders)
+              .set({ status: "approved_rab", updatedAt: new Date() })
+              .where(eq(purchaseOrders.id, po.id));
+          }
+        }
+      }
+    }
+
+    // ─── Handle Payment Request Approvals ────────────────────────────
     if (approval.referenceType === "payment_request") {
       if (parsed.data.action === "reject") {
         await db
@@ -154,7 +219,6 @@ export async function POST(request: NextRequest) {
           .set({ status: "rejected", updatedAt: new Date() })
           .where(eq(paymentRequests.id, approval.referenceId));
       } else if (parsed.data.action === "approve") {
-        // Check if this is the final approval step
         const allApprovals = await db
           .select()
           .from(approvals)
@@ -182,20 +246,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to process approval:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
 
     if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db.select().from(users).where(eq(users.authId, authUser.id));
+    const [dbUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -205,15 +277,15 @@ export async function GET(request: NextRequest) {
       .select()
       .from(approvals)
       .where(
-        and(
-          eq(approvals.approverRole, dbUser.role),
-          isNull(approvals.action)
-        )
+        and(eq(approvals.approverRole, dbUser.role), isNull(approvals.action))
       );
 
     return NextResponse.json({ approvals: pendingApprovals });
   } catch (error) {
     console.error("Failed to fetch approvals:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

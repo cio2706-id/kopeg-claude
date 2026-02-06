@@ -3,7 +3,14 @@ import InfoBanner from "@/components/InfoBanner";
 import PromotionsList from "@/components/PromotionsList";
 import Calendar from "@/components/Calendar";
 import PaymentRequestForm from "@/components/PaymentRequestForm";
-import { Building2, Users, Wallet, CreditCard, Shield } from "lucide-react";
+import {
+  Building2,
+  Users,
+  Wallet,
+  CreditCard,
+  Shield,
+  ShoppingCart,
+} from "lucide-react";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -26,9 +33,9 @@ export default function HomePage() {
               </div>
             </div>
             <p className="text-lg text-blue-100 mb-8">
-              Layanan simpan pinjam untuk kesejahteraan anggota. Kelola
-              simpanan, ajukan pinjaman, dan pantau status permintaan Anda
-              secara online.
+              Layanan simpan pinjam dan pengadaan barang untuk kesejahteraan
+              anggota. Kelola simpanan, ajukan pinjaman, buat Purchase Order, dan
+              pantau status secara online.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
@@ -38,10 +45,16 @@ export default function HomePage() {
                 Login Anggota
               </Link>
               <Link
-                href="/payment-tracker"
+                href="/po/request"
+                className="bg-blue-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-400 transition"
+              >
+                Ajukan PO
+              </Link>
+              <Link
+                href="/po/track"
                 className="border border-white/30 text-white px-6 py-3 rounded-lg font-medium hover:bg-white/10 transition"
               >
-                Lacak Pembayaran
+                Lacak PO
               </Link>
             </div>
           </div>
@@ -50,27 +63,32 @@ export default function HomePage() {
 
       {/* Features */}
       <section className="max-w-7xl mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-12">
           {[
             {
               icon: <Users className="w-6 h-6 text-blue-600" />,
               title: "Keanggotaan",
-              desc: "Kelola data anggota koperasi dengan mudah",
+              desc: "Kelola data anggota koperasi",
             },
             {
               icon: <Wallet className="w-6 h-6 text-green-600" />,
               title: "Simpanan",
-              desc: "Simpanan pokok, wajib, dan sukarela",
+              desc: "Pokok, wajib, dan sukarela",
             },
             {
               icon: <CreditCard className="w-6 h-6 text-orange-600" />,
               title: "Pinjaman",
-              desc: "Ajukan pinjaman dengan bunga kompetitif",
+              desc: "Bunga kompetitif, proses cepat",
+            },
+            {
+              icon: <ShoppingCart className="w-6 h-6 text-indigo-600" />,
+              title: "Purchase Order",
+              desc: "Pengadaan barang terintegrasi",
             },
             {
               icon: <Shield className="w-6 h-6 text-purple-600" />,
-              title: "Transparent",
-              desc: "Lacak status persetujuan secara real-time",
+              title: "Transparan",
+              desc: "Lacak status secara real-time",
             },
           ].map((feature, i) => (
             <div key={i} className="bg-white rounded-lg shadow p-5">
