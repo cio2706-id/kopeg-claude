@@ -194,6 +194,7 @@ export const LOAN_COA_MAP: Record<string, string> = {
 
 /**
  * Get loan balances from Accurate for Piutang-Pinjaman accounts (COA 110304-307).
+ * Uses gl-account/list.do to search by account number.
  * Returns the balance of each account from the GL.
  */
 export async function getLoanBalancesByCoa(
@@ -207,26 +208,96 @@ export async function getLoanBalancesByCoa(
   };
 
   try {
-    // Fetch each COA account balance from Accurate GL
+    // Search for all Piutang-Pinjaman accounts (110304-110307)
+    // Using gl-account/list.do with keyword filter
     for (const [loanType, coa] of Object.entries(LOAN_COA_MAP)) {
       try {
-        const result = await accurateRequest<AccurateGLAccount>(
-          "gl-account/detail.do",
-          { no: coa }
+        // Try list.do first - search by account number
+        const result = await accurateRequest<AccurateGLAccount[]>(
+          "gl-account/list.do",
+          {
+            "filter.keywords.val": coa,
+            fields: "id,no,name,balance,endingBalance",
+            sp: "20",
+          }
         );
-        if (result.d) {
-          balances[loanType] = result.d.balance || 0;
+
+        const accounts = Array.isArray(result.d) ? result.d : [];
+        // Find exact match by account number
+        const account = accounts.find(
+          (a) => a.no === coa || String(a.no) === coa
+        );
+
+        if (account) {
+          // Try endingBalance first (current balance), fallback to balance
+          const bal =
+            (account as unknown as Record<string, unknown>).endingBalance ??
+            account.balance ??
+            0;
+          balances[loanType] = typeof bal === "number" ? bal : Number(bal) || 0;
+          console.log(
+            `[Accurate] COA ${coa} (${loanType}): balance = ${balances[loanType]}, name = ${account.name}`
+          );
+        } else if (accounts.length > 0) {
+          // Didn't find exact match, log what we got
+          console.log(
+            `[Accurate] COA ${coa}: no exact match, found ${accounts.length} accounts:`,
+            accounts.map((a) => `${a.no} - ${a.name}`)
+          );
+        } else {
+          console.log(`[Accurate] COA ${coa}: no accounts found`);
         }
       } catch (error) {
-        console.error(`Failed to get balance for COA ${coa}:`, error);
-        // Continue with next account, don't fail entirely
+        console.error(`[Accurate] Failed to get balance for COA ${coa}:`, error);
       }
     }
   } catch (error) {
-    console.error("Failed to get loan balances from Accurate:", error);
+    console.error("[Accurate] Failed to get loan balances:", error);
   }
 
   return balances;
+}
+
+/**
+ * Debug function: test Accurate API connectivity and return raw results.
+ */
+export async function debugAccurateConnection(): Promise<Record<string, unknown>> {
+  const debug: Record<string, unknown> = {
+    hasToken: !!ACCURATE_ACCESS_TOKEN,
+    tokenPrefix: ACCURATE_ACCESS_TOKEN.substring(0, 10) + "...",
+  };
+
+  try {
+    // Step 1: Test db-list
+    const session = await getAccurateSession();
+    debug.session = { host: session.host, hasSession: !!session.session };
+
+    // Step 2: Test gl-account/list.do with COA 110304
+    try {
+      const result = await accurateRequest<unknown>(
+        "gl-account/list.do",
+        { "filter.keywords.val": "110304", fields: "id,no,name,balance,endingBalance", sp: "5" }
+      );
+      debug.glAccountTest = { success: result.s, data: result.d };
+    } catch (error) {
+      debug.glAccountTest = { error: error instanceof Error ? error.message : String(error) };
+    }
+
+    // Step 3: Test employee/list.do
+    try {
+      const result = await accurateRequest<unknown>(
+        "employee/list.do",
+        { fields: "id,name,email", sp: "3" }
+      );
+      debug.employeeTest = { success: result.s, sampleCount: Array.isArray(result.d) ? result.d.length : 0 };
+    } catch (error) {
+      debug.employeeTest = { error: error instanceof Error ? error.message : String(error) };
+    }
+  } catch (error) {
+    debug.connectionError = error instanceof Error ? error.message : String(error);
+  }
+
+  return debug;
 }
 
 /**

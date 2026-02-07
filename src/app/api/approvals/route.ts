@@ -260,25 +260,47 @@ export async function GET() {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    if (!authUser) {
+    if (!authUser?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
+    // Get or create DB user
+    let [dbUser] = await db
       .select()
       .from(users)
       .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      [dbUser] = await db
+        .insert(users)
+        .values({
+          authId: authUser.id,
+          email: authUser.email,
+          fullName:
+            authUser.user_metadata?.full_name ||
+            authUser.email.split("@")[0],
+          role: "member",
+        })
+        .returning();
     }
 
-    const pendingApprovals = await db
-      .select()
-      .from(approvals)
-      .where(
-        and(eq(approvals.approverRole, dbUser.role), isNull(approvals.action))
-      );
+    // Pengurus (non-member) see ALL pending approvals
+    // Members only see approvals matching their role
+    const pendingApprovals =
+      dbUser.role !== "member"
+        ? await db
+            .select()
+            .from(approvals)
+            .where(isNull(approvals.action))
+        : await db
+            .select()
+            .from(approvals)
+            .where(
+              and(
+                eq(approvals.approverRole, dbUser.role),
+                isNull(approvals.action)
+              )
+            );
 
     return NextResponse.json({ approvals: pendingApprovals });
   } catch (error) {

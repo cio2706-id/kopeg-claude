@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
-import { formatCurrency, ROLE_LABELS } from "@/lib/utils";
-import { Users, Search } from "lucide-react";
+import { ROLE_LABELS } from "@/lib/utils";
+import { Users, Search, Edit3, Check, X } from "lucide-react";
 
 interface User {
   id: string;
@@ -18,12 +18,27 @@ interface User {
   createdAt: string;
 }
 
+const ALL_ROLES = [
+  "member",
+  "staf_pengadaan",
+  "staf_treasury",
+  "staf_piutang",
+  "staf_akunting",
+  "manager",
+  "bendahara",
+  "sekertaris",
+  "ketua",
+];
+
 export default function PengurusMembersPage() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState("");
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -60,6 +75,41 @@ export default function PengurusMembersPage() {
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/pengurus/login");
+  }
+
+  function startEditRole(member: User) {
+    setEditingId(member.id);
+    setEditRole(member.role);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditRole("");
+  }
+
+  async function saveRole(memberId: string) {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: memberId, role: editRole }),
+      });
+      if (res.ok) {
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === memberId ? { ...m, role: editRole } : m
+          )
+        );
+        setEditingId(null);
+      } else {
+        alert("Gagal mengubah role");
+      }
+    } catch {
+      alert("Gagal mengubah role");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function getRoleBadgeClasses(role: string): string {
@@ -179,11 +229,49 @@ export default function PengurusMembersPage() {
                       </td>
                       <td className="py-3.5 text-gray-500">{member.email}</td>
                       <td className="py-3.5">
-                        <span
-                          className={`inline-block text-[11px] px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(member.role)}`}
-                        >
-                          {ROLE_LABELS[member.role] || member.role}
-                        </span>
+                        {editingId === member.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={editRole}
+                              onChange={(e) => setEditRole(e.target.value)}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-teal-500 outline-none"
+                            >
+                              {ALL_ROLES.map((r) => (
+                                <option key={r} value={r}>
+                                  {ROLE_LABELS[r] || r}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => saveRole(member.id)}
+                              disabled={saving}
+                              className="p-1 rounded-md bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-50"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              className="p-1 rounded-md bg-gray-200 text-gray-600 hover:bg-gray-300"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`inline-block text-[11px] px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(member.role)}`}
+                            >
+                              {ROLE_LABELS[member.role] || member.role}
+                            </span>
+                            <button
+                              onClick={() => startEditRole(member)}
+                              className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                              title="Ubah role"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 text-gray-500">
                         {member.department || "-"}

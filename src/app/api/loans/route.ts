@@ -141,10 +141,14 @@ export async function GET() {
         .returning();
     }
 
-    const userLoans = await db
-      .select()
-      .from(loans)
-      .where(eq(loans.userId, dbUser.id));
+    // Pengurus (non-member) see ALL loans, members see only their own
+    const userLoans =
+      dbUser.role !== "member"
+        ? await db.select().from(loans)
+        : await db
+            .select()
+            .from(loans)
+            .where(eq(loans.userId, dbUser.id));
 
     return NextResponse.json({ loans: userLoans });
   } catch (error) {
