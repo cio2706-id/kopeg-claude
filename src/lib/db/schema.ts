@@ -74,10 +74,10 @@ export const approvalActionEnum = pgEnum("approval_action", [
 ]);
 
 export const loanTypeEnum = pgEnum("loan_type", [
-  "regular",
-  "emergency",
-  "education",
-  "housing",
+  "reguler",
+  "khusus",
+  "barang",
+  "travel",
 ]);
 
 // ─── Tables ──────────────────────────────────────────────────────────────────

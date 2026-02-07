@@ -44,10 +44,10 @@ export function cn(...classes: (string | undefined | false | null)[]): string {
 // ─── Labels ─────────────────────────────────────────────────────────────────
 
 export const LOAN_TYPE_LABELS: Record<string, string> = {
-  regular: "Pinjaman Reguler",
-  emergency: "Pinjaman Darurat",
-  education: "Pinjaman Pendidikan",
-  housing: "Pinjaman Perumahan",
+  reguler: "Pinjaman Reguler",
+  khusus: "Pinjaman Khusus",
+  barang: "Pinjaman Barang",
+  travel: "Pinjaman Travel",
 };
 
 export const ROLE_LABELS: Record<string, string> = {

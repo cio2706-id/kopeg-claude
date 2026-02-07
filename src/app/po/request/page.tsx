@@ -25,6 +25,7 @@ export default function PoRequestPage() {
   const [result, setResult] = useState<{ trackingNumber: string; poNumber: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
@@ -36,6 +37,7 @@ export default function PoRequestPage() {
       return;
     }
     setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "User");
+    setUserEmail(user.email || "");
     setAuthLoading(false);
   }, [router, supabase]);
 
@@ -104,7 +106,7 @@ export default function PoRequestPage() {
 
   if (result) {
     return (
-      <DashboardLayout variant="member" userName={userName} onLogout={handleLogout}>
+      <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
         <div className="max-w-lg mx-auto py-8">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 text-center">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -149,7 +151,7 @@ export default function PoRequestPage() {
   }
 
   return (
-    <DashboardLayout variant="member" userName={userName} onLogout={handleLogout}>
+    <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
       <div className="max-w-4xl mx-auto">
         {/* Page Header */}
         <div className="flex items-center gap-3 mb-6">

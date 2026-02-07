@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 const loanSchema = z.object({
-  loanType: z.enum(["regular", "emergency", "education", "housing"]),
+  loanType: z.enum(["reguler", "khusus", "barang", "travel"]),
   amount: z.number().positive(),
   tenorMonths: z.number().int().min(1).max(60),
   purpose: z.string().optional(),
@@ -15,10 +15,10 @@ const loanSchema = z.object({
 });
 
 const INTEREST_RATES: Record<string, number> = {
-  regular: 12,
-  emergency: 6,
-  education: 10,
-  housing: 8,
+  reguler: 12,
+  khusus: 10,
+  barang: 8,
+  travel: 10,
 };
 
 export async function POST(request: NextRequest) {

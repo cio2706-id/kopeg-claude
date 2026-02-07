@@ -44,6 +44,7 @@ export default function PaymentTrackerPage() {
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
@@ -55,6 +56,7 @@ export default function PaymentTrackerPage() {
       return;
     }
     setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "User");
+    setUserEmail(user.email || "");
     setAuthLoading(false);
   }, [router, supabase]);
 
@@ -108,7 +110,7 @@ export default function PaymentTrackerPage() {
   }
 
   return (
-    <DashboardLayout variant="member" userName={userName} onLogout={handleLogout}>
+    <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
       <div className="max-w-2xl mx-auto">
         {/* Page Header */}
         <div className="text-center mb-8">

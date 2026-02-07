@@ -128,11 +128,42 @@ export async function getEmployeeByEmail(
 
 // COA codes for loan types
 export const LOAN_COA_MAP: Record<string, string> = {
-  regular: "110304",
-  emergency: "110305",
-  education: "110306",
-  housing: "110307",
+  reguler: "110304",
+  khusus: "110305",
+  barang: "110306",
+  travel: "110307",
 };
+
+// Get loan balances from Accurate by COA codes
+export async function getLoanBalancesByCoa(
+  employeeName: string
+): Promise<Record<string, number>> {
+  const balances: Record<string, number> = {
+    reguler: 0,
+    khusus: 0,
+    barang: 0,
+    travel: 0,
+  };
+
+  try {
+    const coaCodes = Object.values(LOAN_COA_MAP);
+    const vouchers = await getVouchersByEmployeeName(employeeName, coaCodes);
+
+    for (const voucher of vouchers) {
+      for (const detail of voucher.detailList || []) {
+        for (const [loanType, coa] of Object.entries(LOAN_COA_MAP)) {
+          if (detail.accountNo === coa) {
+            balances[loanType] += detail.debit - detail.credit;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Failed to get loan balances from Accurate:", error);
+  }
+
+  return balances;
+}
 
 export const BANK_MANDIRI_KOPERASI_ACCOUNT = "123456789";
 export const BANK_MANDIRI_COA = "110101";

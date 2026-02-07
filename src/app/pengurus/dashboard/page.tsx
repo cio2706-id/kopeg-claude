@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
@@ -9,22 +10,22 @@ import {
   ROLE_LABELS,
   PO_STATUS_LABELS,
   LOAN_STATUS_LABELS,
+  LOAN_TYPE_LABELS,
 } from "@/lib/utils";
 import {
   Users,
   CreditCard,
   ShoppingCart,
   Wallet,
-  Clock,
+  TrendingUp,
   Check,
   X,
   AlertCircle,
-  ArrowUpRight,
-  TrendingUp,
   ChevronRight,
   FileText,
   Upload,
-  Search,
+  Clock,
+  ArrowUpRight,
 } from "lucide-react";
 import {
   BarChart,
@@ -34,9 +35,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -49,6 +47,7 @@ interface User {
   phone?: string;
   department?: string;
   isActive: boolean;
+  createdAt: string;
 }
 
 interface PurchaseOrder {
@@ -85,7 +84,7 @@ interface Approval {
   stepLabel?: string;
 }
 
-const PIE_COLORS = ["#4F46E5", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
+type ActivityTab = "all" | "loan" | "po";
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -96,9 +95,10 @@ export default function PengurusDashboardPage() {
   const [pendingApprovals, setPendingApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [activityTab, setActivityTab] = useState<ActivityTab>("all");
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -146,6 +146,7 @@ export default function PengurusDashboardPage() {
       setUserName(
         user.user_metadata?.full_name || user.email?.split("@")[0] || "Pengurus"
       );
+      setUserEmail(user.email || "");
       setUserRole(user.user_metadata?.role || "staf_treasury");
       loadData();
     }
@@ -169,32 +170,6 @@ export default function PengurusDashboardPage() {
       console.error("Approval failed:", error);
     } finally {
       setActionLoading(null);
-    }
-  }
-
-  async function handleUpdateUser(id: string, data: Partial<User>) {
-    try {
-      await fetch("/api/users", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...data }),
-      });
-      loadData();
-    } catch (error) {
-      console.error("Update failed:", error);
-    }
-  }
-
-  async function handleUpdatePoStatus(poId: string, status: string) {
-    try {
-      await fetch(`/api/purchase-orders/${poId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      loadData();
-    } catch (error) {
-      console.error("PO update failed:", error);
     }
   }
 
@@ -223,7 +198,7 @@ export default function PengurusDashboardPage() {
     router.push("/pengurus/login");
   }
 
-  // ─── Derived data ───────────────────────────────────────────────────────
+  // ─── Derived data ─────────────────────────────────────────────────────────
 
   const loanApprovals = pendingApprovals.filter(
     (a) => a.referenceType === "loan" && !a.action
@@ -231,36 +206,69 @@ export default function PengurusDashboardPage() {
   const poApprovals = pendingApprovals.filter(
     (a) => a.referenceType === "purchase_order" && !a.action
   );
-
   const allPendingApprovals = [...loanApprovals, ...poApprovals];
 
   const activeMembers = members.filter((m) => m.isActive);
 
-  const totalLoanAmount = loans.reduce(
-    (sum, l) => sum + parseFloat(l.amount || "0"),
-    0
-  );
-
   const pendingLoans = loans.filter(
-    (l) =>
-      !["approved", "disbursed", "rejected", "draft"].includes(l.status)
+    (l) => !["approved", "disbursed", "rejected", "draft"].includes(l.status)
   );
 
   const pendingPOs = purchaseOrders.filter(
     (po) => !["completed", "rejected"].includes(po.status)
   );
 
-  // Chart: PO status distribution
-  const poStatusCounts: Record<string, number> = {};
-  purchaseOrders.forEach((po) => {
-    const label = PO_STATUS_LABELS[po.status] || po.status;
-    poStatusCounts[label] = (poStatusCounts[label] || 0) + 1;
-  });
-  const poChartData = Object.entries(poStatusCounts)
-    .map(([name, value]) => ({ name, value }))
-    .slice(0, 6);
+  const totalLoanAmount = loans.reduce(
+    (sum, l) => sum + parseFloat(l.amount || "0"),
+    0
+  );
 
-  // Chart: Loan by month (last 6 months)
+  // Pencairan bulan ini: loans disbursed this month
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const disbursedThisMonth = loans.filter((l) => {
+    if (l.status !== "disbursed") return false;
+    const d = new Date(l.createdAt);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+  const totalDisbursedThisMonth = disbursedThisMonth.reduce(
+    (sum, l) => sum + parseFloat(l.amount || "0"),
+    0
+  );
+
+  // Combined recent activity (loans + POs sorted by date)
+  const allActivity = [
+    ...loans.map((l) => ({
+      id: l.id,
+      type: "loan" as const,
+      description: LOAN_TYPE_LABELS[l.loanType] || l.loanType,
+      tracking: l.trackingNumber,
+      amount: l.amount,
+      status: l.status,
+      statusLabel: LOAN_STATUS_LABELS[l.status] || l.status,
+      date: l.createdAt,
+    })),
+    ...purchaseOrders.map((po) => ({
+      id: po.id,
+      type: "po" as const,
+      description: po.description,
+      tracking: po.trackingNumber || po.poNumber,
+      amount: po.totalAmount || po.estimatedAmount || "0",
+      status: po.status,
+      statusLabel: PO_STATUS_LABELS[po.status] || po.status,
+      date: po.createdAt,
+    })),
+  ].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  const filteredActivity =
+    activityTab === "all"
+      ? allActivity
+      : allActivity.filter((a) => a.type === activityTab);
+
+  // Loan trend bar chart: last 6 months
   const loanByMonth: Record<string, number> = {};
   loans.forEach((loan) => {
     const date = new Date(loan.createdAt);
@@ -270,54 +278,35 @@ export default function PengurusDashboardPage() {
   const loanBarData = Object.entries(loanByMonth)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-6)
-    .map(([period, amount]) => ({ period, amount }));
+    .map(([period, amount]) => ({
+      period: period.split("-").reverse().join("/"),
+      amount,
+    }));
 
-  // Role distribution for members
+  // Role distribution counts
   const roleCounts: Record<string, number> = {};
   members.forEach((m) => {
     const label = ROLE_LABELS[m.role] || m.role;
     roleCounts[label] = (roleCounts[label] || 0) + 1;
   });
-  const roleChartData = Object.entries(roleCounts)
-    .map(([name, value]) => ({ name, value }))
-    .filter((d) => d.value > 0);
 
-  // Combined recent activity (loans + POs sorted by creation date)
-  const recentActivity = [
-    ...loans.slice(0, 10).map((l) => ({
-      id: l.id,
-      type: "loan" as const,
-      title: `Pinjaman ${l.trackingNumber}`,
-      amount: l.amount,
-      status: l.status,
-      statusLabel: LOAN_STATUS_LABELS[l.status] || l.status,
-      date: l.createdAt,
-    })),
-    ...purchaseOrders.slice(0, 10).map((po) => ({
-      id: po.id,
-      type: "po" as const,
-      title: `PO ${po.poNumber}`,
-      amount: po.totalAmount || po.estimatedAmount || "0",
-      status: po.status,
-      statusLabel: PO_STATUS_LABELS[po.status] || po.status,
-      date: po.createdAt,
-    })),
-  ]
+  // Recent members (sorted by creation, most recent first)
+  const recentMembers = [...members]
     .sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) =>
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
     )
-    .slice(0, 8);
+    .slice(0, 5);
 
-  const filteredMembers = members.filter(
-    (m) =>
-      m.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // ─── Status badge helper ─────────────────────────────────────────────────
+  // ─── Helpers ──────────────────────────────────────────────────────────────
 
   function getStatusBadgeClasses(status: string): string {
-    if (["approved", "disbursed", "completed", "payment_received"].includes(status))
+    if (
+      ["approved", "disbursed", "completed", "payment_received"].includes(
+        status
+      )
+    )
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     if (["rejected"].includes(status))
       return "bg-red-50 text-red-700 border border-red-200";
@@ -343,13 +332,13 @@ export default function PengurusDashboardPage() {
     }
   }
 
-  // ─── Loading state ──────────────────────────────────────────────────────
+  // ─── Loading ──────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f4f7fe] flex items-center justify-center">
+      <div className="min-h-screen bg-[#f0f0f0] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full" />
+          <div className="animate-spin w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full" />
           <p className="text-sm text-gray-500">Memuat dashboard...</p>
         </div>
       </div>
@@ -359,19 +348,26 @@ export default function PengurusDashboardPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout variant="pengurus" userName={userName} onLogout={handleLogout}>
-      {/* Page header */}
+    <DashboardLayout
+      variant="pengurus"
+      userName={userName}
+      userEmail={userEmail}
+      onLogout={handleLogout}
+    >
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Pengurus</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Dashboard Pengurus
+          </h1>
           <p className="text-sm text-gray-500 mt-1">
             Selamat datang, {userName} &mdash;{" "}
-            <span className="font-medium text-gray-700">
+            <span className="font-medium text-teal-600">
               {ROLE_LABELS[userRole] || userRole}
             </span>
           </p>
         </div>
-        <label className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 cursor-pointer transition shadow-sm shadow-blue-200">
+        <label className="inline-flex items-center gap-2 bg-teal-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-teal-600 cursor-pointer transition shadow-sm shadow-teal-200">
           <Upload className="w-4 h-4" />
           Upload Simpanan
           <input
@@ -383,130 +379,177 @@ export default function PengurusDashboardPage() {
         </label>
       </div>
 
-      {/* ─── Summary Cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+      {/* ─── 5 Summary Cards ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        {/* 1. Total Anggota */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
               <Users className="w-5 h-5 text-blue-600" />
             </div>
-            <p className="text-sm text-gray-500">Total Anggota</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Total Anggota
+            </p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{members.length}</p>
           <p className="text-xs text-gray-400 mt-1">
-            {activeMembers.length} aktif &middot;{" "}
-            {members.length - activeMembers.length} nonaktif
+            {activeMembers.length} aktif
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        {/* 2. Pinjaman Pending */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center">
-              <CreditCard className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-teal-600" />
             </div>
-            <p className="text-sm text-gray-500">Pinjaman Pending</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Pinjaman Pending
+            </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{pendingLoans.length}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {pendingLoans.length}
+          </p>
           <p className="text-xs text-gray-400 mt-1">
-            {loanApprovals.length} menunggu persetujuan Anda
+            {loanApprovals.length} menunggu Anda
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        {/* 3. PO Pending */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center">
-              <ShoppingCart className="w-5 h-5 text-purple-600" />
+            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+              <ShoppingCart className="w-5 h-5 text-gray-500" />
             </div>
-            <p className="text-sm text-gray-500">PO Pending</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              PO Pending
+            </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{pendingPOs.length}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {pendingPOs.length}
+          </p>
           <p className="text-xs text-gray-400 mt-1">
-            {poApprovals.length} menunggu persetujuan Anda
+            {poApprovals.length} menunggu Anda
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        {/* 4. Total Simpanan Anggota */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+              <Wallet className="w-5 h-5 text-gray-500" />
             </div>
-            <p className="text-sm text-gray-500">Total Pinjaman</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Total Pinjaman
+            </p>
           </div>
           <p className="text-2xl font-bold text-gray-900">
             {formatCurrency(totalLoanAmount)}
           </p>
-          <p className="text-xs text-gray-400 mt-1">{loans.length} total pinjaman</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {loans.length} pinjaman
+          </p>
+        </div>
+
+        {/* 5. Pencairan Bulan Ini */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-gray-500" />
+            </div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Pencairan Bulan Ini
+            </p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">
+            {formatCurrency(totalDisbursedThisMonth)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            {disbursedThisMonth.length} pencairan
+          </p>
         </div>
       </div>
 
-      {/* ─── Pending Approvals ─────────────────────────────────────────── */}
+      {/* ─── Pending Approvals ────────────────────────────────────────────── */}
       {allPendingApprovals.length > 0 && (
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-5">
-            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-              <AlertCircle className="w-4 h-4 text-red-600" />
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+              <AlertCircle className="w-4 h-4 text-red-500" />
             </div>
             <h2 className="text-lg font-semibold text-gray-900">
               Menunggu Persetujuan
             </h2>
-            <span className="ml-1 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+            <span className="bg-red-500 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
               {allPendingApprovals.length}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {allPendingApprovals.map((approval) => {
               const isLoan = approval.referenceType === "loan";
               return (
                 <div
                   key={approval.id}
-                  className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow"
+                  className="bg-white rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow"
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3">
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        isLoan ? "bg-amber-100" : "bg-purple-100"
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isLoan ? "bg-teal-100" : "bg-gray-100"
                       }`}
                     >
                       {isLoan ? (
-                        <CreditCard className="w-5 h-5 text-amber-600" />
+                        <CreditCard className="w-5 h-5 text-teal-600" />
                       ) : (
-                        <ShoppingCart className="w-5 h-5 text-purple-600" />
+                        <ShoppingCart className="w-5 h-5 text-gray-500" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                            isLoan
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-purple-100 text-purple-700"
-                          }`}
-                        >
-                          {isLoan ? "Pinjaman" : "Purchase Order"}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-gray-900 text-sm truncate">
-                        {isLoan ? "Pinjaman" : "PO"} #{approval.referenceId.slice(0, 8)}
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                          isLoan
+                            ? "bg-teal-50 text-teal-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {isLoan ? "Pinjaman" : "Purchase Order"}
+                      </span>
+                      <p className="font-semibold text-gray-900 text-sm mt-2 truncate">
+                        {isLoan ? "Pinjaman" : "PO"} #
+                        {approval.referenceId.slice(0, 8)}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-400 mt-0.5">
                         Step {approval.stepOrder} &mdash;{" "}
-                        {approval.stepLabel || ROLE_LABELS[approval.approverRole]}
+                        {approval.stepLabel ||
+                          ROLE_LABELS[approval.approverRole]}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Approver:{" "}
+                        <span className="font-medium text-gray-600">
+                          {ROLE_LABELS[approval.approverRole] ||
+                            approval.approverRole}
+                        </span>
                       </p>
                     </div>
                   </div>
+
                   <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
                     <button
                       onClick={() => handleApproval(approval.id, "approve")}
                       disabled={actionLoading === approval.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 transition disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
                     >
                       <Check className="w-3.5 h-3.5" />
                       Setujui
                     </button>
                     <button
                       onClick={() =>
-                        handleApproval(approval.id, "reject", "Ditolak oleh pengurus")
+                        handleApproval(
+                          approval.id,
+                          "reject",
+                          "Ditolak oleh pengurus"
+                        )
                       }
                       disabled={actionLoading === approval.id}
                       className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
@@ -522,135 +565,89 @@ export default function PengurusDashboardPage() {
         </div>
       )}
 
-      {/* ─── Charts Row ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Loan Trend Bar Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+      {/* ─── Loan Trend Chart ─────────────────────────────────────────────── */}
+      {loanBarData.length > 0 && (
+        <div className="bg-white rounded-2xl p-5 shadow-sm mb-8">
+          <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-blue-600" />
-              <h2 className="font-semibold text-gray-900">Tren Pinjaman Bulanan</h2>
+              <TrendingUp className="w-4 h-4 text-teal-500" />
+              <h2 className="font-semibold text-gray-900">
+                Tren Pinjaman Bulanan
+              </h2>
             </div>
             <span className="text-xs text-gray-400">6 bulan terakhir</span>
           </div>
-          <div className="p-5">
-            {loanBarData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={loanBarData} barCategoryGap="20%">
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f0f0f0"
-                  />
-                  <XAxis
-                    dataKey="period"
-                    tick={{ fontSize: 12, fill: "#9ca3af" }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12, fill: "#9ca3af" }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) =>
-                      v >= 1_000_000
-                        ? `${(v / 1_000_000).toFixed(0)}jt`
-                        : `${(v / 1000).toFixed(0)}k`
-                    }
-                  />
-                  <Tooltip
-                    formatter={(value) => [formatCurrency(Number(value)), "Pinjaman"]}
-                    contentStyle={{
-                      borderRadius: "12px",
-                      border: "1px solid #e5e7eb",
-                      boxShadow: "0 4px 6px -1px rgba(0,0,0,0.07)",
-                    }}
-                  />
-                  <Bar dataKey="amount" fill="#4F46E5" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">
-                Belum ada data pinjaman
-              </div>
-            )}
-          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={loanBarData} barCategoryGap="20%">
+              <CartesianGrid
+                strokeDasharray="3 3"
+                vertical={false}
+                stroke="#f0f0f0"
+              />
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 12, fill: "#9ca3af" }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 12, fill: "#9ca3af" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) =>
+                  v >= 1_000_000
+                    ? `${(v / 1_000_000).toFixed(0)}jt`
+                    : `${(v / 1000).toFixed(0)}k`
+                }
+              />
+              <Tooltip
+                formatter={(value) => [
+                  formatCurrency(Number(value)),
+                  "Pinjaman",
+                ]}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "1px solid #e5e7eb",
+                  boxShadow: "0 4px 6px -1px rgba(0,0,0,0.07)",
+                }}
+              />
+              <Bar dataKey="amount" fill="#14b8a6" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
+      )}
 
-        {/* Role Distribution Pie */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-          <div className="p-5 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Distribusi Role</h2>
-          </div>
-          <div className="p-5">
-            {roleChartData.length > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart>
-                    <Pie
-                      data={roleChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={75}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {roleChartData.map((_, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={PIE_COLORS[index % PIE_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 mt-3">
-                  {roleChartData.slice(0, 5).map((item, index) => (
-                    <div
-                      key={item.name}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{
-                            backgroundColor:
-                              PIE_COLORS[index % PIE_COLORS.length],
-                          }}
-                        />
-                        <span className="text-gray-600 text-xs">{item.name}</span>
-                      </div>
-                      <span className="font-medium text-gray-900 text-xs">
-                        {item.value}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-[250px] text-gray-400 text-sm">
-                Belum ada data
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Recent Activity Table ───────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-8">
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+      {/* ─── Recent Activity Table ────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-sm mb-8">
+        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" />
+            <Clock className="w-4 h-4 text-gray-400" />
             <h2 className="font-semibold text-gray-900">Aktivitas Terbaru</h2>
           </div>
-          <span className="text-xs text-gray-400">
-            {recentActivity.length} item terakhir
-          </span>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            {(
+              [
+                { key: "all", label: "Semua" },
+                { key: "loan", label: "Pinjaman" },
+                { key: "po", label: "Purchase Order" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActivityTab(tab.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${
+                  activityTab === tab.key
+                    ? "bg-white text-teal-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="p-5">
-          {recentActivity.length === 0 ? (
+          {filteredActivity.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 text-gray-200 mx-auto mb-3" />
               <p className="text-gray-400 text-sm">Belum ada aktivitas.</p>
@@ -660,44 +657,51 @@ export default function PengurusDashboardPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-400 text-xs uppercase tracking-wide">
+                    <th className="pb-3 font-medium">Deskripsi</th>
+                    <th className="pb-3 font-medium">ID / Tracking</th>
                     <th className="pb-3 font-medium">Tipe</th>
-                    <th className="pb-3 font-medium">Referensi</th>
                     <th className="pb-3 font-medium">Tanggal</th>
                     <th className="pb-3 font-medium text-right">Jumlah</th>
                     <th className="pb-3 font-medium text-center">Status</th>
-                    <th className="pb-3 font-medium text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {recentActivity.map((item) => (
+                  {filteredActivity.slice(0, 10).map((item) => (
                     <tr
                       key={`${item.type}-${item.id}`}
                       className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors"
                     >
                       <td className="py-3.5">
-                        <div className="flex items-center gap-2.5">
+                        <p className="font-medium text-gray-900 truncate max-w-[200px]">
+                          {item.description}
+                        </p>
+                      </td>
+                      <td className="py-3.5">
+                        <span className="font-mono text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-md">
+                          {item.tracking}
+                        </span>
+                      </td>
+                      <td className="py-3.5">
+                        <div className="flex items-center gap-2">
                           <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center ${
                               item.type === "loan"
-                                ? "bg-amber-100"
-                                : "bg-purple-100"
+                                ? "bg-teal-100"
+                                : "bg-gray-100"
                             }`}
                           >
                             {item.type === "loan" ? (
-                              <CreditCard className="w-4 h-4 text-amber-600" />
+                              <CreditCard className="w-3.5 h-3.5 text-teal-600" />
                             ) : (
-                              <ShoppingCart className="w-4 h-4 text-purple-600" />
+                              <ShoppingCart className="w-3.5 h-3.5 text-gray-500" />
                             )}
                           </div>
-                          <span className="font-medium text-gray-700 text-xs uppercase tracking-wide">
+                          <span className="text-xs font-medium text-gray-600">
                             {item.type === "loan" ? "Pinjaman" : "PO"}
                           </span>
                         </div>
                       </td>
-                      <td className="py-3.5">
-                        <p className="font-medium text-gray-900">{item.title}</p>
-                      </td>
-                      <td className="py-3.5 text-gray-500">
+                      <td className="py-3.5 text-gray-500 text-xs">
                         {new Date(item.date).toLocaleDateString("id-ID", {
                           day: "numeric",
                           month: "short",
@@ -709,260 +713,180 @@ export default function PengurusDashboardPage() {
                       </td>
                       <td className="py-3.5 text-center">
                         <span
-                          className={`inline-block text-xs px-2.5 py-1 rounded-full font-medium ${getStatusBadgeClasses(
+                          className={`inline-block text-[11px] px-2.5 py-1 rounded-full font-medium ${getStatusBadgeClasses(
                             item.status
                           )}`}
                         >
                           {item.statusLabel}
                         </span>
                       </td>
-                      <td className="py-3.5 text-center">
-                        {/* PO status flow action buttons */}
-                        {item.type === "po" && (
-                          <div className="flex gap-1 justify-center flex-wrap">
-                            {item.status === "approved_rab" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "spp_process")
-                                }
-                                className="text-xs bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition"
-                              >
-                                Proses SPP
-                              </button>
-                            )}
-                            {item.status === "spp_process" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "procurement")
-                                }
-                                className="text-xs bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition"
-                              >
-                                Beli Vendor
-                              </button>
-                            )}
-                            {item.status === "procurement" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "delivery")
-                                }
-                                className="text-xs bg-blue-600 text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition"
-                              >
-                                Kirim Vendor
-                              </button>
-                            )}
-                            {item.status === "delivery" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "goods_received")
-                                }
-                                className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-lg hover:bg-emerald-700 transition"
-                              >
-                                Diterima
-                              </button>
-                            )}
-                            {item.status === "goods_received" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "goods_delivered")
-                                }
-                                className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-lg hover:bg-emerald-700 transition"
-                              >
-                                Kirim Client
-                              </button>
-                            )}
-                            {item.status === "goods_delivered" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "invoicing")
-                                }
-                                className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-lg hover:bg-orange-600 transition"
-                              >
-                                Invoice
-                              </button>
-                            )}
-                            {item.status === "invoicing" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "waiting_payment")
-                                }
-                                className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-lg hover:bg-orange-600 transition"
-                              >
-                                Kirim Invoice
-                              </button>
-                            )}
-                            {item.status === "waiting_payment" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "payment_received")
-                                }
-                                className="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-lg hover:bg-emerald-700 transition"
-                              >
-                                Bayar Diterima
-                              </button>
-                            )}
-                            {item.status === "payment_received" && (
-                              <button
-                                onClick={() =>
-                                  handleUpdatePoStatus(item.id, "completed")
-                                }
-                                className="text-xs bg-gray-800 text-white px-2.5 py-1 rounded-lg hover:bg-gray-900 transition"
-                              >
-                                Selesai
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {item.type === "loan" && (
-                          <span className="text-xs text-gray-400">&mdash;</span>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Members Section ─────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-gray-500" />
-            <h2 className="font-semibold text-gray-900">Daftar Anggota</h2>
-            <span className="text-xs text-gray-400 ml-1">
-              ({members.length} total)
-            </span>
-          </div>
-          <div className="flex items-center gap-2 bg-[#f4f7fe] rounded-xl px-3 py-2 border border-gray-100 w-full sm:w-[280px]">
-            <Search className="w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Cari anggota..."
-              className="bg-transparent text-sm outline-none flex-1 text-gray-600 placeholder:text-gray-400"
-            />
-          </div>
-        </div>
-        <div className="p-5">
-          {filteredMembers.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-400 text-sm">
-                {searchTerm
-                  ? "Tidak ditemukan anggota yang cocok."
-                  : "Belum ada anggota."}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-400 text-xs uppercase tracking-wide">
-                    <th className="pb-3 font-medium">Anggota</th>
-                    <th className="pb-3 font-medium">Role</th>
-                    <th className="pb-3 font-medium">Departemen</th>
-                    <th className="pb-3 font-medium text-center">Status</th>
-                    <th className="pb-3 font-medium text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMembers.slice(0, 10).map((member) => (
-                    <tr
-                      key={member.id}
-                      className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                            {member.fullName.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {member.fullName}
-                            </p>
-                            <p className="text-xs text-gray-400">{member.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3.5">
-                        <span
-                          className={`inline-block text-xs px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(
-                            member.role
-                          )}`}
-                        >
-                          {ROLE_LABELS[member.role] || member.role}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-gray-600">
-                        {member.department || "-"}
-                      </td>
-                      <td className="py-3.5 text-center">
-                        <span
-                          className={`inline-block text-xs px-2.5 py-1 rounded-full font-medium ${
-                            member.isActive
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-red-50 text-red-600 border border-red-200"
-                          }`}
-                        >
-                          {member.isActive ? "Aktif" : "Nonaktif"}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <select
-                            value={member.role}
-                            onChange={(e) =>
-                              handleUpdateUser(member.id, {
-                                role: e.target.value,
-                              } as Partial<User>)
-                            }
-                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                          >
-                            {Object.entries(ROLE_LABELS).map(([val, label]) => (
-                              <option key={val} value={val}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() =>
-                              handleUpdateUser(member.id, {
-                                isActive: !member.isActive,
-                              })
-                            }
-                            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition ${
-                              member.isActive
-                                ? "text-red-600 bg-red-50 hover:bg-red-100 border border-red-200"
-                                : "text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
-                            }`}
-                          >
-                            {member.isActive ? "Nonaktifkan" : "Aktifkan"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {filteredMembers.length > 10 && (
+              {filteredActivity.length > 10 && (
                 <div className="pt-4 border-t border-gray-100 mt-2 text-center">
                   <p className="text-xs text-gray-400">
-                    Menampilkan 10 dari {filteredMembers.length} anggota.{" "}
-                    <a
-                      href="/pengurus/members"
-                      className="text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      Lihat semua
-                      <ChevronRight className="w-3 h-3 inline ml-0.5" />
-                    </a>
+                    Menampilkan 10 dari {filteredActivity.length} aktivitas.
                   </p>
                 </div>
               )}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ─── Anggota Overview ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Quick Stats */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="font-semibold text-gray-900">Ringkasan Anggota</h2>
+            <Link
+              href="/pengurus/members"
+              className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-0.5"
+            >
+              Lihat Semua <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          {/* Total & Active */}
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="bg-teal-50 rounded-xl p-3.5 text-center">
+              <p className="text-2xl font-bold text-teal-700">
+                {activeMembers.length}
+              </p>
+              <p className="text-[11px] text-teal-600 font-medium mt-0.5">
+                Aktif
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3.5 text-center">
+              <p className="text-2xl font-bold text-gray-700">
+                {members.length - activeMembers.length}
+              </p>
+              <p className="text-[11px] text-gray-500 font-medium mt-0.5">
+                Nonaktif
+              </p>
+            </div>
+          </div>
+
+          {/* Role Breakdown */}
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Per Role
+          </p>
+          <div className="space-y-2">
+            {Object.entries(roleCounts)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 6)
+              .map(([role, count]) => (
+                <div
+                  key={role}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span className="text-gray-600 text-xs">{role}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-teal-400 rounded-full"
+                        style={{
+                          width: `${Math.min(
+                            (count / members.length) * 100,
+                            100
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="font-medium text-gray-900 text-xs w-6 text-right">
+                      {count}
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+
+        {/* Recent Members Table */}
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm">
+          <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-gray-400" />
+              <h2 className="font-semibold text-gray-900">Anggota Terbaru</h2>
+            </div>
+            <Link
+              href="/pengurus/members"
+              className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-0.5"
+            >
+              Kelola <ArrowUpRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="p-5">
+            {recentMembers.length === 0 ? (
+              <div className="text-center py-10">
+                <Users className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">Belum ada anggota.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-400 text-xs uppercase tracking-wide">
+                      <th className="pb-3 font-medium">Anggota</th>
+                      <th className="pb-3 font-medium">Role</th>
+                      <th className="pb-3 font-medium">Departemen</th>
+                      <th className="pb-3 font-medium text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentMembers.map((member) => (
+                      <tr
+                        key={member.id}
+                        className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors"
+                      >
+                        <td className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-bold text-xs">
+                              {member.fullName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">
+                                {member.fullName}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {member.email}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <span
+                            className={`inline-block text-[11px] px-2.5 py-1 rounded-full font-medium ${getRoleBadgeClasses(
+                              member.role
+                            )}`}
+                          >
+                            {ROLE_LABELS[member.role] || member.role}
+                          </span>
+                        </td>
+                        <td className="py-3 text-xs text-gray-500">
+                          {member.department || "-"}
+                        </td>
+                        <td className="py-3 text-center">
+                          <span
+                            className={`inline-block text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                              member.isActive
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-red-50 text-red-600"
+                            }`}
+                          >
+                            {member.isActive ? "Aktif" : "Nonaktif"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </DashboardLayout>

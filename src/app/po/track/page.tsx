@@ -66,6 +66,7 @@ export default function PoTrackPage() {
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
@@ -77,6 +78,7 @@ export default function PoTrackPage() {
       return;
     }
     setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "User");
+    setUserEmail(user.email || "");
     setAuthLoading(false);
   }, [router, supabase]);
 
