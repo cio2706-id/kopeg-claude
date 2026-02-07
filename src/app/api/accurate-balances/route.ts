@@ -12,17 +12,28 @@ export async function GET() {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    if (!authUser) {
+    if (!authUser?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
+    // Get or create DB user
+    let [dbUser] = await db
       .select()
       .from(users)
       .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      [dbUser] = await db
+        .insert(users)
+        .values({
+          authId: authUser.id,
+          email: authUser.email,
+          fullName:
+            authUser.user_metadata?.full_name ||
+            authUser.email.split("@")[0],
+          role: "member",
+        })
+        .returning();
     }
 
     // Get employee name from employee_data
@@ -33,15 +44,17 @@ export async function GET() {
 
     const employeeName = empData?.fullName || dbUser.fullName;
 
-    // Fetch balances from Accurate by COA codes
+    // Fetch balances from Accurate for Piutang-Pinjaman (COA 110304-110307)
     const balances = await getLoanBalancesByCoa(employeeName);
 
     return NextResponse.json({ balances, employeeName });
   } catch (error) {
     console.error("Failed to fetch Accurate balances:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    // Return zero balances instead of 500 so dashboard still renders
+    return NextResponse.json({
+      balances: { reguler: 0, khusus: 0, barang: 0, travel: 0 },
+      employeeName: "",
+      error: error instanceof Error ? error.message : "Failed to fetch",
+    });
   }
 }

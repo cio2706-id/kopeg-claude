@@ -34,18 +34,18 @@ export default function PengurusLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f7fe] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#f0f0f0] flex items-center justify-center px-4">
       {/* Decorative background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-200/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-teal-200/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl" />
       </div>
 
       <div className="relative max-w-md w-full">
         {/* Logo and Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-700 rounded-2xl shadow-lg shadow-indigo-200 mb-4">
-            <Shield className="w-8 h-8 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-lg shadow-gray-300 mb-4">
+            <Shield className="w-8 h-8 text-teal-400" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">KopegBKI</h1>
           <p className="text-sm text-gray-500 mt-1">Panel Pengurus Koperasi</p>
@@ -54,9 +54,9 @@ export default function PengurusLoginPage() {
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
           {/* Gradient Header Bar */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-5">
+          <div className="bg-gradient-to-r from-[#1a1a2e] to-[#16213e] px-8 py-5">
             <h2 className="text-lg font-semibold text-white">Login Pengurus</h2>
-            <p className="text-sm text-indigo-200 mt-0.5">Koperasi Pegawai PT Biro Klasifikasi Indonesia</p>
+            <p className="text-sm text-teal-300 mt-0.5">Koperasi Pegawai PT Biro Klasifikasi Indonesia</p>
           </div>
 
           <div className="p-8">
@@ -70,7 +70,7 @@ export default function PengurusLoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full pl-11 pr-4 py-3 bg-[#f4f7fe] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-all outline-none"
+                    className="w-full pl-11 pr-4 py-3 bg-[#f0f0f0] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
                     placeholder="admin@bki.co.id"
                   />
                 </div>
@@ -85,7 +85,7 @@ export default function PengurusLoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="w-full pl-11 pr-4 py-3 bg-[#f4f7fe] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-all outline-none"
+                    className="w-full pl-11 pr-4 py-3 bg-[#f0f0f0] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
                     placeholder="Masukkan password"
                   />
                 </div>
@@ -100,7 +100,7 @@ export default function PengurusLoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 hover:shadow-indigo-300"
+                className="w-full bg-teal-500 text-white py-3 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
               >
                 {loading ? (
                   <>
@@ -122,7 +122,7 @@ export default function PengurusLoginPage() {
         <div className="text-center mt-6">
           <p className="text-sm text-gray-500">
             Anggota?{" "}
-            <Link href="/member/login" className="text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1 hover:gap-2 transition-all">
+            <Link href="/member/login" className="text-teal-600 hover:text-teal-700 font-medium inline-flex items-center gap-1 hover:gap-2 transition-all">
               Login di sini <ArrowRight className="w-3 h-3" />
             </Link>
           </p>

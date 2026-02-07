@@ -41,17 +41,17 @@ export default function MemberLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f7fe] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#f0f0f0] flex items-center justify-center px-4">
       {/* Decorative background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-200/30 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-teal-200/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-100/40 rounded-full blur-3xl" />
       </div>
 
       <div className="relative max-w-md w-full">
         {/* Logo and Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl shadow-lg shadow-blue-200 mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-teal-500 to-teal-700 rounded-2xl shadow-lg shadow-teal-200 mb-4">
             <Building2 className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">KopegBKI</h1>
@@ -75,7 +75,7 @@ export default function MemberLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full pl-11 pr-4 py-3 bg-[#f4f7fe] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all outline-none"
+                  className="w-full pl-11 pr-4 py-3 bg-[#f0f0f0] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
                   placeholder="email@bki.co.id"
                 />
               </div>
@@ -90,7 +90,7 @@ export default function MemberLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full pl-11 pr-4 py-3 bg-[#f4f7fe] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all outline-none"
+                  className="w-full pl-11 pr-4 py-3 bg-[#f0f0f0] border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
                   placeholder="Masukkan password"
                 />
               </div>
@@ -105,7 +105,7 @@ export default function MemberLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200 hover:shadow-blue-300"
+              className="w-full bg-teal-500 text-white py-3 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
             >
               {loading ? (
                 <>
@@ -126,7 +126,7 @@ export default function MemberLoginPage() {
         <div className="text-center mt-6">
           <p className="text-sm text-gray-500">
             Pengurus?{" "}
-            <Link href="/pengurus/login" className="text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-1 hover:gap-2 transition-all">
+            <Link href="/pengurus/login" className="text-teal-600 hover:text-teal-700 font-medium inline-flex items-center gap-1 hover:gap-2 transition-all">
               Login di sini <ArrowRight className="w-3 h-3" />
             </Link>
           </p>

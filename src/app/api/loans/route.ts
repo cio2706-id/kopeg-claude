@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { LOAN_COA_MAP } from "@/lib/accurate";
 
 const loanSchema = z.object({
   loanType: z.enum(["reguler", "khusus", "barang", "travel"]),
@@ -28,17 +29,28 @@ export async function POST(request: NextRequest) {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    if (!authUser) {
+    if (!authUser?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
+    // Get or create DB user (same pattern as sync-employee)
+    let [dbUser] = await db
       .select()
       .from(users)
       .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      [dbUser] = await db
+        .insert(users)
+        .values({
+          authId: authUser.id,
+          email: authUser.email,
+          fullName:
+            authUser.user_metadata?.full_name ||
+            authUser.email.split("@")[0],
+          role: "member",
+        })
+        .returning();
     }
 
     const body = await request.json();
@@ -60,6 +72,7 @@ export async function POST(request: NextRequest) {
     );
 
     const trackingNumber = generateTrackingNumber("LN");
+    const coaCode = LOAN_COA_MAP[parsed.data.loanType];
 
     const [loan] = await db
       .insert(loans)
@@ -73,6 +86,7 @@ export async function POST(request: NextRequest) {
         monthlyInstallment: Math.round(monthlyInstallment).toString(),
         purpose: parsed.data.purpose,
         status: "pending_treasury",
+        coaCode,
       })
       .returning();
 
@@ -90,10 +104,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ loan, trackingNumber });
   } catch (error) {
     console.error("Failed to create loan:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -104,17 +117,28 @@ export async function GET() {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    if (!authUser) {
+    if (!authUser?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
+    // Get or create DB user
+    let [dbUser] = await db
       .select()
       .from(users)
       .where(eq(users.authId, authUser.id));
 
     if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      [dbUser] = await db
+        .insert(users)
+        .values({
+          authId: authUser.id,
+          email: authUser.email,
+          fullName:
+            authUser.user_metadata?.full_name ||
+            authUser.email.split("@")[0],
+          role: "member",
+        })
+        .returning();
     }
 
     const userLoans = await db
@@ -125,9 +149,8 @@ export async function GET() {
     return NextResponse.json({ loans: userLoans });
   } catch (error) {
     console.error("Failed to fetch loans:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
