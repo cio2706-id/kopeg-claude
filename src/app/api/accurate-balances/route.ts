@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { users, employeeData } from "@/lib/db/schema";
+import { users, employeeData, loans } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getLoanBalancesByCoa } from "@/lib/accurate";
-import { eq } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -44,16 +45,72 @@ export async function GET() {
 
     const employeeName = empData?.fullName || dbUser.fullName;
 
-    // Fetch balances from Accurate for Piutang-Pinjaman (COA 110304-110307)
-    const balances = await getLoanBalancesByCoa(employeeName);
+    // ─── Primary: Calculate loan balances from DB ──────────────────────
+    // Sum active loan amounts per loan_type for this user
+    const dbBalances: Record<string, number> = {
+      reguler: 0,
+      khusus: 0,
+      barang: 0,
+      travel: 0,
+    };
 
-    return NextResponse.json({ balances, employeeName });
+    const userLoans = await db
+      .select({
+        loanType: loans.loanType,
+        totalAmount: sql<string>`sum(${loans.amount})`,
+      })
+      .from(loans)
+      .where(
+        and(
+          eq(loans.userId, dbUser.id),
+          notInArray(loans.status, ["rejected", "draft"])
+        )
+      )
+      .groupBy(loans.loanType);
+
+    for (const row of userLoans) {
+      if (row.loanType in dbBalances) {
+        dbBalances[row.loanType] = parseFloat(row.totalAmount) || 0;
+      }
+    }
+
+    // ─── Supplementary: Try Accurate API (non-blocking) ───────────────
+    let accurateBalances: Record<string, number> | null = null;
+    let accurateError: string | null = null;
+
+    try {
+      accurateBalances = await getLoanBalancesByCoa(employeeName);
+    } catch (error) {
+      accurateError = error instanceof Error ? error.message : "Accurate API failed";
+      console.error("[accurate-balances] Accurate API error:", accurateError);
+    }
+
+    // Use DB balances as primary, Accurate as supplementary info
+    // If Accurate has non-zero values, use them (they represent GL truth)
+    // Otherwise fall back to DB-calculated balances
+    const balances = { ...dbBalances };
+    if (accurateBalances) {
+      for (const [type, val] of Object.entries(accurateBalances)) {
+        if (val > 0) {
+          balances[type] = val;
+        }
+      }
+    }
+
+    return NextResponse.json({
+      balances,
+      employeeName,
+      source: accurateBalances ? "accurate+db" : "db",
+      dbBalances,
+      accurateBalances,
+      accurateError,
+    });
   } catch (error) {
-    console.error("Failed to fetch Accurate balances:", error);
-    // Return zero balances instead of 500 so dashboard still renders
+    console.error("Failed to fetch balances:", error);
     return NextResponse.json({
       balances: { reguler: 0, khusus: 0, barang: 0, travel: 0 },
       employeeName: "",
+      source: "error",
       error: error instanceof Error ? error.message : "Failed to fetch",
     });
   }

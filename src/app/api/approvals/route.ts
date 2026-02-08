@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const {
@@ -284,10 +284,13 @@ export async function GET() {
         .returning();
     }
 
-    // Pengurus (non-member) see ALL pending approvals
-    // Members only see approvals matching their role
+    // Pengurus pages pass ?view=all to see ALL pending approvals
+    // Otherwise, non-member roles see all, members see only their role's approvals
+    const { searchParams } = new URL(request.url);
+    const viewAll = searchParams.get("view") === "all";
+
     const pendingApprovals =
-      dbUser.role !== "member"
+      viewAll || dbUser.role !== "member"
         ? await db
             .select()
             .from(approvals)

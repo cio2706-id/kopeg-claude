@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const {
@@ -141,9 +141,13 @@ export async function GET() {
         .returning();
     }
 
-    // Pengurus (non-member) see ALL loans, members see only their own
+    // Pengurus pages pass ?view=all to see ALL loans
+    // Otherwise, non-member roles see all, members see only their own
+    const { searchParams } = new URL(request.url);
+    const viewAll = searchParams.get("view") === "all";
+
     const userLoans =
-      dbUser.role !== "member"
+      viewAll || dbUser.role !== "member"
         ? await db.select().from(loans)
         : await db
             .select()

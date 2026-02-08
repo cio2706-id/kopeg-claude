@@ -48,7 +48,7 @@ export default function PengurusLoansPage() {
       );
       setUserEmail(user.email || "");
 
-      const res = await fetch("/api/loans");
+      const res = await fetch("/api/loans?view=all");
       if (res.ok) {
         const data = await res.json();
         setLoans(data.loans || []);

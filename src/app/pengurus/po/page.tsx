@@ -41,7 +41,7 @@ export default function PengurusPOPage() {
       );
       setUserEmail(user.email || "");
 
-      const res = await fetch("/api/purchase-orders");
+      const res = await fetch("/api/purchase-orders?view=all");
       if (res.ok) {
         const data = await res.json();
         setPurchaseOrders(data.purchaseOrders || []);

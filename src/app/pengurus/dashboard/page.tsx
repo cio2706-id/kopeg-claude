@@ -106,9 +106,9 @@ export default function PengurusDashboardPage() {
     try {
       const [membersRes, approvalsRes, poRes, loansRes] = await Promise.all([
         fetch("/api/users"),
-        fetch("/api/approvals"),
-        fetch("/api/purchase-orders"),
-        fetch("/api/loans"),
+        fetch("/api/approvals?view=all"),
+        fetch("/api/purchase-orders?view=all"),
+        fetch("/api/loans?view=all"),
       ]);
 
       if (membersRes.ok) {

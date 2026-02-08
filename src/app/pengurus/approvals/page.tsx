@@ -43,7 +43,7 @@ export default function PengurusApprovalsPage() {
       );
       setUserEmail(user.email || "");
 
-      const res = await fetch("/api/approvals");
+      const res = await fetch("/api/approvals?view=all");
       if (res.ok) {
         const data = await res.json();
         setApprovals(data.approvals || []);
