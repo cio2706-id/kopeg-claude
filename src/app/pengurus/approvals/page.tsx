@@ -4,20 +4,72 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
-import { ROLE_LABELS } from "@/lib/utils";
-import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText } from "lucide-react";
+import { ROLE_LABELS, LOAN_TYPE_LABELS, LOAN_STATUS_LABELS, formatCurrency } from "@/lib/utils";
+import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle } from "lucide-react";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface Approval {
   id: string;
   referenceType: string;
   referenceId: string;
   approverRole: string;
-  action?: string;
+  action?: string | null;
   stepOrder: number;
-  stepLabel?: string;
+  stepLabel?: string | null;
+  comments?: string | null;
+  decidedAt?: string | null;
+  createdAt?: string;
+}
+
+interface ApprovalStep {
+  id: string;
+  stepOrder: number;
+  stepLabel: string | null;
+  approverRole: string;
+  action: string | null;
+  comments: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  approver: {
+    id: string;
+    fullName: string | null;
+    email: string | null;
+  } | null;
+}
+
+interface Requester {
+  fullName: string | null;
+  email: string | null;
+  department: string | null;
+  employeeId: string | null;
+}
+
+interface LoanData {
+  id: string;
+  loanType: string;
+  amount: string;
+  interestRate: string;
+  tenorMonths: number;
+  monthlyInstallment: string;
+  purpose: string | null;
+  status: string;
+  trackingNumber: string;
+  creditScore: string | null;
+  createdAt: string;
+}
+
+interface LoanDetail {
+  loan: LoanData;
+  requester: Requester;
+  activeLoans: LoanData[];
+  pendingRequests: LoanData[];
+  approvalSteps: ApprovalStep[];
 }
 
 type FilterTab = "all" | "loan" | "purchase_order";
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export default function PengurusApprovalsPage() {
   const [userName, setUserName] = useState("");
@@ -26,8 +78,16 @@ export default function PengurusApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
+  const [loanDetails, setLoanDetails] = useState<Record<string, LoanDetail>>({});
+  const [loanDetailLoading, setLoanDetailLoading] = useState<Record<string, boolean>>({});
+  const [userDbRole, setUserDbRole] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
+
+  // ─── Data Loading ───────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
     try {
@@ -43,10 +103,24 @@ export default function PengurusApprovalsPage() {
       );
       setUserEmail(user.email || "");
 
-      const res = await fetch("/api/approvals?view=all");
-      if (res.ok) {
-        const data = await res.json();
+      // Fetch approvals and users in parallel
+      const [approvalsRes, usersRes] = await Promise.all([
+        fetch("/api/approvals?view=all"),
+        fetch("/api/users"),
+      ]);
+
+      if (approvalsRes.ok) {
+        const data = await approvalsRes.json();
         setApprovals(data.approvals || []);
+      }
+
+      // Find current user's DB role
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        const me = (usersData.users || []).find(
+          (u: any) => u.email === user.email
+        );
+        if (me) setUserDbRole(me.role);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -59,27 +133,64 @@ export default function PengurusApprovalsPage() {
     loadData();
   }, [loadData]);
 
+  // ─── Loan Detail Fetching ───────────────────────────────────────────────
+
+  const fetchLoanDetail = useCallback(async (referenceId: string) => {
+    if (loanDetails[referenceId] || loanDetailLoading[referenceId]) return;
+
+    setLoanDetailLoading((prev) => ({ ...prev, [referenceId]: true }));
+    try {
+      const res = await fetch(`/api/loans/${referenceId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLoanDetails((prev) => ({ ...prev, [referenceId]: data }));
+      }
+    } catch (error) {
+      console.error("Failed to fetch loan detail:", error);
+    } finally {
+      setLoanDetailLoading((prev) => ({ ...prev, [referenceId]: false }));
+    }
+  }, [loanDetails, loanDetailLoading]);
+
+  // ─── Card Expansion ────────────────────────────────────────────────────
+
+  function handleCardClick(approval: Approval) {
+    if (selectedApprovalId === approval.id) {
+      setSelectedApprovalId(null);
+      setRejectingId(null);
+      setRejectReason("");
+      return;
+    }
+
+    setSelectedApprovalId(approval.id);
+    setRejectingId(null);
+    setRejectReason("");
+
+    // Fetch loan detail when expanding a loan approval
+    if (approval.referenceType === "loan") {
+      fetchLoanDetail(approval.referenceId);
+    }
+  }
+
+  // ─── Actions ────────────────────────────────────────────────────────────
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/pengurus/login");
   }
 
-  async function handleApproval(
-    approvalId: string,
-    action: "approve" | "reject"
-  ) {
+  async function handleApprove(approvalId: string) {
     setActionLoading(approvalId);
     try {
       const res = await fetch("/api/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          approvalId,
-          action,
-          comments: action === "reject" ? "Ditolak oleh pengurus" : undefined,
-        }),
+        body: JSON.stringify({ approvalId, action: "approve" }),
       });
       if (res.ok) {
+        setSelectedApprovalId(null);
+        // Clear cached loan details so they refresh
+        setLoanDetails({});
         loadData();
       }
     } catch (error) {
@@ -88,6 +199,36 @@ export default function PengurusApprovalsPage() {
       setActionLoading(null);
     }
   }
+
+  async function handleReject(approvalId: string) {
+    if (!rejectReason.trim()) return;
+
+    setActionLoading(approvalId);
+    try {
+      const res = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvalId,
+          action: "reject",
+          comments: rejectReason.trim(),
+        }),
+      });
+      if (res.ok) {
+        setSelectedApprovalId(null);
+        setRejectingId(null);
+        setRejectReason("");
+        setLoanDetails({});
+        loadData();
+      }
+    } catch (error) {
+      console.error("Rejection failed:", error);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  // ─── Derived Data ──────────────────────────────────────────────────────
 
   const pendingApprovals = approvals.filter((a) => !a.action);
 
@@ -109,6 +250,433 @@ export default function PengurusApprovalsPage() {
     { key: "purchase_order", label: "Purchase Order", count: poCount },
   ];
 
+  // ─── Render Helpers ────────────────────────────────────────────────────
+
+  function renderApprovalTimeline(steps: ApprovalStep[]) {
+    return (
+      <div className="mt-5 pt-5 border-t border-gray-100">
+        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
+          Timeline Persetujuan
+        </h4>
+        <div className="space-y-0">
+          {steps.map((step, index) => {
+            const isApproved = step.action === "approve";
+            const isRejected = step.action === "reject";
+            const isPending = !step.action;
+            const isLast = index === steps.length - 1;
+
+            return (
+              <div key={step.id} className="flex gap-3">
+                {/* Timeline line and dot */}
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isApproved
+                        ? "bg-teal-100"
+                        : isRejected
+                        ? "bg-red-100"
+                        : "bg-gray-100"
+                    }`}
+                  >
+                    {isApproved ? (
+                      <Check className="w-3.5 h-3.5 text-teal-600" />
+                    ) : isRejected ? (
+                      <X className="w-3.5 h-3.5 text-red-600" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                  </div>
+                  {!isLast && (
+                    <div
+                      className={`w-0.5 h-8 ${
+                        isApproved
+                          ? "bg-teal-200"
+                          : isRejected
+                          ? "bg-red-200"
+                          : "bg-gray-200"
+                      }`}
+                    />
+                  )}
+                </div>
+
+                {/* Step info */}
+                <div className={`pb-4 ${isLast ? "" : ""}`}>
+                  <p className="text-sm font-medium text-gray-900">
+                    Step {step.stepOrder} &mdash;{" "}
+                    {ROLE_LABELS[step.approverRole] || step.approverRole}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {step.stepLabel || "Persetujuan"}
+                  </p>
+                  {isApproved && (
+                    <p className="text-xs text-teal-600 mt-1 font-medium">
+                      Disetujui
+                      {step.approver?.fullName
+                        ? ` oleh ${step.approver.fullName}`
+                        : ""}
+                    </p>
+                  )}
+                  {isRejected && (
+                    <div className="mt-1">
+                      <p className="text-xs text-red-600 font-medium">
+                        Ditolak
+                        {step.approver?.fullName
+                          ? ` oleh ${step.approver.fullName}`
+                          : ""}
+                      </p>
+                      {step.comments && (
+                        <p className="text-xs text-red-500 mt-0.5 italic">
+                          &quot;{step.comments}&quot;
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {isPending && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Menunggu persetujuan
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function renderLoanExpandedDetail(approval: Approval) {
+    const detail = loanDetails[approval.referenceId];
+    const isLoading = loanDetailLoading[approval.referenceId];
+
+    if (isLoading) {
+      return (
+        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-center py-8">
+          <div className="flex flex-col items-center gap-2">
+            <div className="animate-spin w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full" />
+            <p className="text-xs text-gray-400">Memuat detail pinjaman...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!detail) {
+      return (
+        <div className="mt-4 pt-4 border-t border-gray-100 text-center py-6">
+          <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-xs text-gray-400">Gagal memuat detail pinjaman.</p>
+        </div>
+      );
+    }
+
+    const { loan, requester, activeLoans, pendingRequests, approvalSteps } = detail;
+    const activeLoansTotal = activeLoans.reduce(
+      (sum, l) => sum + parseFloat(l.amount),
+      0
+    );
+
+    const canAct = userDbRole === approval.approverRole;
+    const isRejecting = rejectingId === approval.id;
+
+    return (
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        {/* Loan Detail */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              Jenis Pinjaman
+            </p>
+            <p className="text-sm font-medium text-gray-900 mt-0.5">
+              {LOAN_TYPE_LABELS[loan.loanType] || loan.loanType}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              Jumlah
+            </p>
+            <p className="text-sm font-bold text-gray-900 mt-0.5">
+              {formatCurrency(Number(loan.amount))}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              Tenor
+            </p>
+            <p className="text-sm font-medium text-gray-900 mt-0.5">
+              {loan.tenorMonths} bulan
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              Angsuran/Bulan
+            </p>
+            <p className="text-sm font-medium text-gray-900 mt-0.5">
+              {formatCurrency(Number(loan.monthlyInstallment))}
+            </p>
+          </div>
+          {loan.purpose && (
+            <div className="col-span-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                Tujuan
+              </p>
+              <p className="text-sm text-gray-700 mt-0.5">{loan.purpose}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Requester Info */}
+        <div className="mt-5 pt-5 border-t border-gray-100">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <User className="w-3.5 h-3.5" />
+            Informasi Pemohon
+          </h4>
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Nama</span>
+              <span className="text-xs font-medium text-gray-900">
+                {requester?.fullName || "-"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Departemen</span>
+              <span className="text-xs font-medium text-gray-900">
+                {requester?.department || "-"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">NIP</span>
+              <span className="text-xs font-medium text-gray-900">
+                {requester?.employeeId || "-"}
+              </span>
+            </div>
+            <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+              <span className="text-xs text-gray-500">
+                Pinjaman aktif lainnya
+              </span>
+              <span className="text-xs font-medium text-gray-900">
+                {activeLoans.length} pinjaman
+                {activeLoans.length > 0 && (
+                  <span className="text-gray-400 ml-1">
+                    ({formatCurrency(activeLoansTotal)})
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                Pengajuan pending lainnya
+              </span>
+              <span className="text-xs font-medium text-gray-900">
+                {pendingRequests.length} pengajuan
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Approval Timeline */}
+        {approvalSteps.length > 0 && renderApprovalTimeline(approvalSteps)}
+
+        {/* Action Buttons */}
+        <div className="mt-5 pt-5 border-t border-gray-100">
+          {canAct ? (
+            <div className="space-y-3">
+              {!isRejecting && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleApprove(approval.id);
+                    }}
+                    disabled={actionLoading === approval.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
+                  >
+                    <Check className="w-4 h-4" />
+                    Setujui
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRejectingId(approval.id);
+                      setRejectReason("");
+                    }}
+                    disabled={actionLoading === approval.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" />
+                    Tolak
+                  </button>
+                </div>
+              )}
+
+              {isRejecting && (
+                <div className="bg-red-50 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-medium text-red-700">
+                    Alasan Penolakan
+                  </p>
+                  <textarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Tuliskan alasan penolakan..."
+                    rows={3}
+                    className="w-full text-sm border border-red-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none bg-white text-gray-900 placeholder:text-gray-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReject(approval.id);
+                      }}
+                      disabled={
+                        actionLoading === approval.id ||
+                        !rejectReason.trim()
+                      }
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-700 transition disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                      Konfirmasi Tolak
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRejectingId(null);
+                        setRejectReason("");
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-100 transition"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-3 rounded-xl">
+              <Clock className="w-4 h-4 flex-shrink-0" />
+              <p className="text-sm">
+                Menunggu{" "}
+                <span className="font-semibold">
+                  {ROLE_LABELS[approval.approverRole] || approval.approverRole}
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderPOExpandedDetail(approval: Approval) {
+    const canAct = userDbRole === approval.approverRole;
+    const isRejecting = rejectingId === approval.id;
+
+    return (
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
+          <ShoppingCart className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-xs text-gray-500">
+            Purchase Order #{approval.referenceId.slice(0, 8)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Step {approval.stepOrder} &mdash;{" "}
+            {approval.stepLabel ||
+              ROLE_LABELS[approval.approverRole] ||
+              approval.approverRole}
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="mt-5 pt-5 border-t border-gray-100">
+          {canAct ? (
+            <div className="space-y-3">
+              {!isRejecting && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleApprove(approval.id);
+                    }}
+                    disabled={actionLoading === approval.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
+                  >
+                    <Check className="w-4 h-4" />
+                    Setujui
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRejectingId(approval.id);
+                      setRejectReason("");
+                    }}
+                    disabled={actionLoading === approval.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" />
+                    Tolak
+                  </button>
+                </div>
+              )}
+
+              {isRejecting && (
+                <div className="bg-red-50 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-medium text-red-700">
+                    Alasan Penolakan
+                  </p>
+                  <textarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Tuliskan alasan penolakan..."
+                    rows={3}
+                    className="w-full text-sm border border-red-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-red-300 resize-none bg-white text-gray-900 placeholder:text-gray-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReject(approval.id);
+                      }}
+                      disabled={
+                        actionLoading === approval.id ||
+                        !rejectReason.trim()
+                      }
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-700 transition disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                      Konfirmasi Tolak
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRejectingId(null);
+                        setRejectReason("");
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-100 transition"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-3 rounded-xl">
+              <Clock className="w-4 h-4 flex-shrink-0" />
+              <p className="text-sm">
+                Menunggu{" "}
+                <span className="font-semibold">
+                  {ROLE_LABELS[approval.approverRole] || approval.approverRole}
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Loading State ─────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f0f0f0] flex items-center justify-center">
@@ -119,6 +687,8 @@ export default function PengurusApprovalsPage() {
       </div>
     );
   }
+
+  // ─── Render ────────────────────────────────────────────────────────────
 
   return (
     <DashboardLayout
@@ -140,6 +710,15 @@ export default function PengurusApprovalsPage() {
             </p>
           </div>
         </div>
+        {userDbRole && (
+          <div className="flex items-center gap-2 bg-white rounded-xl px-4 py-2 shadow-sm">
+            <User className="w-4 h-4 text-teal-500" />
+            <span className="text-sm text-gray-600">Role Anda:</span>
+            <span className="text-sm font-semibold text-gray-900">
+              {ROLE_LABELS[userDbRole] || userDbRole}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Filter Tabs */}
@@ -174,73 +753,111 @@ export default function PengurusApprovalsPage() {
       {filteredApprovals.length === 0 ? (
         <div className="bg-white rounded-2xl shadow-sm p-12 text-center">
           <FileText className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">Tidak ada persetujuan yang menunggu.</p>
+          <p className="text-gray-400 text-sm">
+            Tidak ada persetujuan yang menunggu.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {filteredApprovals.map((approval) => {
             const isLoan = approval.referenceType === "loan";
+            const isExpanded = selectedApprovalId === approval.id;
+            const detail = loanDetails[approval.referenceId];
+            const canAct = userDbRole === approval.approverRole;
+
             return (
               <div
                 key={approval.id}
-                className="bg-white rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                onClick={() => handleCardClick(approval)}
+                className={`bg-white rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                  isExpanded ? "ring-2 ring-teal-200" : ""
+                }`}
               >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      isLoan ? "bg-teal-100" : "bg-gray-100"
-                    }`}
-                  >
-                    {isLoan ? (
-                      <CreditCard className="w-5 h-5 text-teal-600" />
-                    ) : (
-                      <ShoppingCart className="w-5 h-5 text-gray-500" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                        isLoan
-                          ? "bg-teal-50 text-teal-700"
-                          : "bg-gray-100 text-gray-600"
+                {/* Collapsed Header - Always Visible */}
+                <div className="p-5">
+                  <div className="flex items-center gap-3">
+                    {/* Icon */}
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isLoan ? "bg-teal-100" : "bg-gray-100"
                       }`}
                     >
-                      {isLoan ? "Pinjaman" : "Purchase Order"}
-                    </span>
-                    <p className="font-semibold text-gray-900 text-sm mt-2 truncate">
-                      {isLoan ? "Pinjaman" : "PO"} #{approval.referenceId.slice(0, 8)}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Step {approval.stepOrder} &mdash;{" "}
-                      {approval.stepLabel || ROLE_LABELS[approval.approverRole]}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Approver:{" "}
-                      <span className="font-medium text-gray-600">
-                        {ROLE_LABELS[approval.approverRole] || approval.approverRole}
-                      </span>
-                    </p>
+                      {isLoan ? (
+                        <CreditCard className="w-5 h-5 text-teal-600" />
+                      ) : (
+                        <ShoppingCart className="w-5 h-5 text-gray-500" />
+                      )}
+                    </div>
+
+                    {/* Main Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                            isLoan
+                              ? "bg-teal-50 text-teal-700"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {isLoan ? "Pinjaman" : "Purchase Order"}
+                        </span>
+                        {isLoan && detail?.loan && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-600">
+                            {LOAN_TYPE_LABELS[detail.loan.loanType] ||
+                              detail.loan.loanType}
+                          </span>
+                        )}
+                        {canAct && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                            Perlu Tindakan
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <p className="font-semibold text-gray-900 text-sm truncate">
+                          {isLoan ? "Pinjaman" : "PO"} #
+                          {approval.referenceId.slice(0, 8)}
+                        </p>
+                        {isLoan && detail?.loan && (
+                          <p className="text-sm font-bold text-teal-600">
+                            {formatCurrency(Number(detail.loan.amount))}
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Step {approval.stepOrder} &mdash;{" "}
+                        {ROLE_LABELS[approval.approverRole] ||
+                          approval.approverRole}
+                      </p>
+                      {isLoan && detail?.requester?.fullName && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Pemohon:{" "}
+                          <span className="font-medium text-gray-700">
+                            {detail.requester.fullName}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Expand Arrow */}
+                    <div className="flex-shrink-0 text-gray-400">
+                      {isExpanded ? (
+                        <ChevronUp className="w-5 h-5" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5" />
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => handleApproval(approval.id, "approve")}
-                    disabled={actionLoading === approval.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    Setujui
-                  </button>
-                  <button
-                    onClick={() => handleApproval(approval.id, "reject")}
-                    disabled={actionLoading === approval.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    Tolak
-                  </button>
-                </div>
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="px-5 pb-5">
+                    {isLoan
+                      ? renderLoanExpandedDetail(approval)
+                      : renderPOExpandedDetail(approval)}
+                  </div>
+                )}
               </div>
             );
           })}

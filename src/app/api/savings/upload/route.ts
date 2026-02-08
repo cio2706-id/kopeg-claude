@@ -17,42 +17,70 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(sheet);
+
+    // Parse as array of arrays to handle the Excel's specific format
+    // (title rows 1-6, data from row 7 onwards)
+    const allRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
+      header: 1,
+      defval: null,
+    });
 
     const batchId = uuidv4();
-    const period = formData.get("period") as string || new Date().toISOString().slice(0, 7);
+    const period =
+      (formData.get("period") as string) ||
+      new Date().toISOString().slice(0, 7);
     let processed = 0;
     const errors: string[] = [];
 
-    for (const row of rows) {
-      const employeeId = String(row["employee_id"] || row["NIP"] || "");
-      const simpananPokok = Number(row["simpanan_pokok"] || row["Simpanan Pokok"] || 0);
-      const simpananWajib = Number(row["simpanan_wajib"] || row["Simpanan Wajib"] || 0);
-      const simpananSukarela = Number(row["simpanan_sukarela"] || row["Simpanan Sukarela"] || 0);
+    // Data rows start at index 6 (row 7 in Excel, after title + headers)
+    for (let i = 6; i < allRows.length; i++) {
+      const row = allRows[i];
+      if (!row || !row[0]) continue; // Skip empty rows
 
-      if (!employeeId) {
-        errors.push(`Row skipped: missing employee_id`);
-        continue;
-      }
+      const noAnggota = String(row[1] || "").trim(); // Column B: NO. ANGGOTA
+      const namaAnggota = String(row[2] || "").trim(); // Column C: NAMA ANGGOTA
+      const unitKerja = String(row[3] || "").trim(); // Column D: UNIT KERJA
+      const pokok = Number(row[4]) || 0; // Column E: POKOK
+      const wajib = Number(row[5]) || 0; // Column F: WAJIB
+      const khusus = Number(row[6]) || 0; // Column G: KHUSUS
+      const sukarela = Number(row[7]) || 0; // Column H: SUKARELA
+      const shu = Number(row[8]) || 0; // Column I: SHU
+      const jumlah = Number(row[9]) || 0; // Column J: JUMLAH
+      const status = String(row[10] || "").trim(); // Column K: STATUS
 
-      const [user] = await db
+      if (!noAnggota || !namaAnggota) continue;
+      if (status === "BUKAN ANGGOTA") continue;
+
+      // Try to find user by employeeId (NO. ANGGOTA) or email pattern
+      let [user] = await db
         .select()
         .from(users)
-        .where(eq(users.employeeId, employeeId));
+        .where(eq(users.employeeId, noAnggota));
 
       if (!user) {
-        errors.push(`Employee ${employeeId} not found`);
+        // Try email pattern: {employeeNumber}@kopeg-bki.id
+        const email = `${noAnggota}@kopeg-bki.id`;
+        [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, email));
+      }
+
+      if (!user) {
+        errors.push(`Row ${i + 1}: Anggota ${noAnggota} (${namaAnggota}) not found in DB`);
         continue;
       }
 
-      const total = simpananPokok + simpananWajib + simpananSukarela;
+      const total = jumlah || pokok + wajib + khusus + sukarela + shu;
 
       await db.insert(savings).values({
         userId: user.id,
         period,
-        simpananPokok: simpananPokok.toString(),
-        simpananWajib: simpananWajib.toString(),
-        simpananSukarela: simpananSukarela.toString(),
+        simpananPokok: pokok.toString(),
+        simpananWajib: wajib.toString(),
+        simpananKhusus: khusus.toString(),
+        simpananSukarela: sukarela.toString(),
+        shu: shu.toString(),
         totalBalance: total.toString(),
         uploadBatchId: batchId,
       });
@@ -64,10 +92,14 @@ export async function POST(request: NextRequest) {
       message: `Processed ${processed} records`,
       batchId,
       processed,
-      errors,
+      errors: errors.slice(0, 50), // Limit errors to first 50
+      totalErrors: errors.length,
     });
   } catch (error) {
     console.error("Failed to upload savings:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

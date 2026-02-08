@@ -1,11 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { ShoppingCart, Plus, Trash2, CheckCircle, Send, Package, Info } from "lucide-react";
+import { useState } from "react";
+import { ShoppingCart, Plus, Trash2, CheckCircle, Send, Info, Building2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import DashboardLayout from "@/components/DashboardLayout";
 import { formatCurrency } from "@/lib/utils";
 
 interface PoItem {
@@ -17,6 +14,9 @@ interface PoItem {
 }
 
 export default function PoRequestPage() {
+  const [requesterName, setRequesterName] = useState("");
+  const [requesterDivisi, setRequesterDivisi] = useState("");
+  const [requesterNip, setRequesterNip] = useState("");
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<PoItem[]>([
     { itemName: "", description: "", quantity: 1, unit: "pcs", unitPrice: 0 },
@@ -24,31 +24,6 @@ export default function PoRequestPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ trackingNumber: string; poNumber: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [userName, setUserName] = useState("");
-  const [userEmail, setUserEmail] = useState("");
-  const [authLoading, setAuthLoading] = useState(true);
-  const router = useRouter();
-  const supabase = createSupabaseBrowserClient();
-
-  const checkAuth = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/member/login");
-      return;
-    }
-    setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "User");
-    setUserEmail(user.email || "");
-    setAuthLoading(false);
-  }, [router, supabase]);
-
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/member/login");
-  }
 
   function addItem() {
     setItems([...items, { itemName: "", description: "", quantity: 1, unit: "pcs", unitPrice: 0 }]);
@@ -79,6 +54,9 @@ export default function PoRequestPage() {
           description,
           estimatedAmount: totalEstimate,
           items: items.filter((i) => i.itemName.trim()),
+          requesterName,
+          requesterDivisi,
+          requesterNip,
         }),
       });
 
@@ -96,18 +74,30 @@ export default function PoRequestPage() {
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-[#f4f7fe] flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
   if (result) {
     return (
-      <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
-        <div className="max-w-lg mx-auto py-8">
+      <div className="min-h-screen bg-[#f0f0f0]">
+        {/* Header */}
+        <header className="bg-[#1a1a2e] text-white">
+          <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-teal-500 rounded-lg flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-lg">KopegBKI</span>
+            </div>
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Kembali ke Beranda
+            </Link>
+          </div>
+        </header>
+
+        {/* Success Content */}
+        <main className="max-w-lg mx-auto px-6 py-12">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 text-center">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-10 h-10 text-green-600" />
@@ -122,7 +112,7 @@ export default function PoRequestPage() {
               </div>
               <div className="bg-[#f4f7fe] rounded-2xl p-4">
                 <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Nomor Tracking</p>
-                <p className="text-lg font-mono font-bold text-blue-600">{result.trackingNumber}</p>
+                <p className="text-lg font-mono font-bold text-teal-600">{result.trackingNumber}</p>
               </div>
             </div>
 
@@ -130,33 +120,46 @@ export default function PoRequestPage() {
               Simpan nomor tracking untuk melacak status PO Anda. PO akan direview oleh Staf Pengadaan.
             </p>
 
-            <div className="flex gap-3 justify-center">
-              <Link
-                href="/"
-                className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
-              >
-                Kembali
-              </Link>
-              <Link
-                href="/payment-tracker"
-                className="border border-gray-200 bg-white px-6 py-3 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 transition-all"
-              >
-                Lacak PO
-              </Link>
-            </div>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-teal-600 transition-all shadow-lg shadow-teal-200"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Kembali ke Beranda
+            </Link>
           </div>
-        </div>
-      </DashboardLayout>
+        </main>
+      </div>
     );
   }
 
   return (
-    <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-[#f0f0f0]">
+      {/* Header */}
+      <header className="bg-[#1a1a2e] text-white">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-teal-500 rounded-lg flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-lg">KopegBKI</span>
+          </div>
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Kembali ke Beranda
+          </Link>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-6 py-8">
         {/* Page Header */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center">
-            <ShoppingCart className="w-5 h-5 text-blue-600" />
+          <div className="w-11 h-11 rounded-xl bg-teal-100 flex items-center justify-center">
+            <ShoppingCart className="w-5 h-5 text-teal-600" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">Formulir Purchase Order</h1>
@@ -165,6 +168,46 @@ export default function PoRequestPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Identitas Pemohon */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">Identitas Pemohon</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Nama</label>
+                <input
+                  type="text"
+                  value={requesterName}
+                  onChange={(e) => setRequesterName(e.target.value)}
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-[#f4f7fe] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                  placeholder="Nama lengkap"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Divisi</label>
+                <input
+                  type="text"
+                  value={requesterDivisi}
+                  onChange={(e) => setRequesterDivisi(e.target.value)}
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-[#f4f7fe] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                  placeholder="Divisi / Departemen"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">NIP</label>
+                <input
+                  type="text"
+                  value={requesterNip}
+                  onChange={(e) => setRequesterNip(e.target.value)}
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-[#f4f7fe] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                  placeholder="Nomor Induk Pegawai"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* PO Description */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h2 className="font-semibold text-gray-900 mb-4">Deskripsi PO</h2>
@@ -173,7 +216,7 @@ export default function PoRequestPage() {
               onChange={(e) => setDescription(e.target.value)}
               required
               rows={3}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f4f7fe] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all outline-none resize-none"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f4f7fe] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none resize-none"
               placeholder="Jelaskan kebutuhan pengadaan barang/jasa..."
             />
           </div>
@@ -185,7 +228,7 @@ export default function PoRequestPage() {
               <button
                 type="button"
                 onClick={addItem}
-                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-semibold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all"
+                className="flex items-center gap-1.5 text-sm text-teal-600 hover:text-teal-700 font-semibold bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-all"
               >
                 <Plus className="w-4 h-4" /> Tambah Barang
               </button>
@@ -211,7 +254,7 @@ export default function PoRequestPage() {
                         value={item.itemName}
                         onChange={(e) => updateItem(index, "itemName", e.target.value)}
                         required
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all outline-none"
                         placeholder="Nama barang"
                       />
                     </div>
@@ -221,7 +264,7 @@ export default function PoRequestPage() {
                         type="text"
                         value={item.description}
                         onChange={(e) => updateItem(index, "description", e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all outline-none"
                         placeholder="Spesifikasi (opsional)"
                       />
                     </div>
@@ -233,7 +276,7 @@ export default function PoRequestPage() {
                           value={item.quantity}
                           onChange={(e) => updateItem(index, "quantity", parseInt(e.target.value) || 1)}
                           min="1"
-                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all outline-none"
                         />
                       </div>
                       <div className="w-28">
@@ -241,7 +284,7 @@ export default function PoRequestPage() {
                         <select
                           value={item.unit}
                           onChange={(e) => updateItem(index, "unit", e.target.value)}
-                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all outline-none"
                         >
                           <option value="pcs">Pcs</option>
                           <option value="unit">Unit</option>
@@ -260,7 +303,7 @@ export default function PoRequestPage() {
                         value={item.unitPrice || ""}
                         onChange={(e) => updateItem(index, "unitPrice", parseFloat(e.target.value) || 0)}
                         min="0"
-                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all outline-none"
                         placeholder="0"
                       />
                     </div>
@@ -279,7 +322,7 @@ export default function PoRequestPage() {
             {totalEstimate > 0 && (
               <div className="mt-5 pt-5 border-t border-gray-200 flex justify-between items-center">
                 <span className="font-semibold text-gray-700">Estimasi Total</span>
-                <span className="text-xl font-bold text-blue-600">{formatCurrency(totalEstimate)}</span>
+                <span className="text-xl font-bold text-teal-600">{formatCurrency(totalEstimate)}</span>
               </div>
             )}
           </div>
@@ -301,8 +344,8 @@ export default function PoRequestPage() {
 
           <button
             type="submit"
-            disabled={loading || !description.trim()}
-            className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200 hover:shadow-blue-300"
+            disabled={loading || !description.trim() || !requesterName.trim() || !requesterDivisi.trim() || !requesterNip.trim()}
+            className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
           >
             {loading ? (
               <>
@@ -317,7 +360,7 @@ export default function PoRequestPage() {
             )}
           </button>
         </form>
-      </div>
-    </DashboardLayout>
+      </main>
+    </div>
   );
 }

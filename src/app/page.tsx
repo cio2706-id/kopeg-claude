@@ -30,6 +30,12 @@ export default function HomePage() {
             <a href="#how-it-works" className="hover:text-white transition-colors">
               Cara Kerja
             </a>
+            <Link
+              href="/po/request"
+              className="text-teal-400 hover:text-teal-300 transition-colors"
+            >
+              Ajukan PO
+            </Link>
           </nav>
           <div className="flex items-center gap-3">
             <Link
@@ -86,8 +92,15 @@ export default function HomePage() {
                 Login Anggota
               </Link>
               <Link
-                href="/pengurus/login"
+                href="/po/request"
                 className="inline-flex items-center gap-2 bg-white/10 backdrop-blur text-white px-7 py-3.5 rounded-2xl font-semibold border border-white/20 hover:bg-white/20 transition-colors"
+              >
+                <ClipboardList className="w-5 h-5" />
+                Ajukan PO
+              </Link>
+              <Link
+                href="/pengurus/login"
+                className="inline-flex items-center gap-2 bg-white/5 text-gray-400 px-7 py-3.5 rounded-2xl font-semibold border border-white/10 hover:bg-white/10 hover:text-white transition-colors"
               >
                 Login Pengurus
                 <ArrowRight className="w-5 h-5" />

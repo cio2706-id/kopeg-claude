@@ -10,6 +10,9 @@ import { z } from "zod";
 const createPoSchema = z.object({
   description: z.string().min(1),
   estimatedAmount: z.number().positive().optional(),
+  requesterName: z.string().min(1).optional(),
+  requesterDivisi: z.string().min(1).optional(),
+  requesterNip: z.string().min(1).optional(),
   items: z
     .array(
       z.object({
@@ -25,17 +28,6 @@ const createPoSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const dbUser = await getOrCreateUser(user);
-
     const body = await request.json();
     const parsed = createPoSchema.safeParse(body);
 
@@ -46,17 +38,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if this is an authenticated or public submission
+    let userId: string | null = null;
+    try {
+      const supabase = await createSupabaseServerClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        const dbUser = await getOrCreateUser(user);
+        userId = dbUser.id;
+      }
+    } catch {
+      // Public submission - no auth
+    }
+
+    // Public submissions must provide requester info
+    if (!userId && !parsed.data.requesterName) {
+      return NextResponse.json(
+        { error: "Nama pemohon wajib diisi" },
+        { status: 400 }
+      );
+    }
+
     const trackingNumber = generateTrackingNumber("PO");
     const poNumber = generatePoNumber();
 
     const [po] = await db
       .insert(purchaseOrders)
       .values({
-        userId: dbUser.id,
+        userId,
         trackingNumber,
         poNumber,
         description: parsed.data.description,
         estimatedAmount: parsed.data.estimatedAmount?.toString(),
+        requesterName: parsed.data.requesterName,
+        requesterDivisi: parsed.data.requesterDivisi,
+        requesterNip: parsed.data.requesterNip,
         status: "submitted",
       })
       .returning();

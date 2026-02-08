@@ -4,7 +4,7 @@ import { employeeData, loans } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { getLoanBalancesByCoa } from "@/lib/accurate";
-import { eq, and, notInArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 export async function GET() {
@@ -37,6 +37,8 @@ export async function GET() {
       travel: 0,
     };
 
+    // Only count fully approved/disbursed loans in balance
+    // Approved statuses: approved, spp_process, bank_process, disbursed
     const userLoans = await db
       .select({
         loanType: loans.loanType,
@@ -46,7 +48,7 @@ export async function GET() {
       .where(
         and(
           eq(loans.userId, dbUser.id),
-          notInArray(loans.status, ["rejected", "draft"])
+          inArray(loans.status, ["approved", "spp_process", "bank_process", "disbursed"])
         )
       )
       .groupBy(loans.loanType);

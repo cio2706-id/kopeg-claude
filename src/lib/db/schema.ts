@@ -126,6 +126,8 @@ export const savings = pgTable("savings", {
   simpananPokok: numeric("simpanan_pokok", { precision: 15, scale: 2 }).default("0"),
   simpananWajib: numeric("simpanan_wajib", { precision: 15, scale: 2 }).default("0"),
   simpananSukarela: numeric("simpanan_sukarela", { precision: 15, scale: 2 }).default("0"),
+  simpananKhusus: numeric("simpanan_khusus", { precision: 15, scale: 2 }).default("0"),
+  shu: numeric("shu", { precision: 15, scale: 2 }).default("0"),
   totalBalance: numeric("total_balance", { precision: 15, scale: 2 }).default("0"),
   uploadBatchId: varchar("upload_batch_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -167,8 +169,10 @@ export const loans = pgTable("loans", {
 export const purchaseOrders = pgTable("purchase_orders", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
-    .references(() => users.id)
-    .notNull(),
+    .references(() => users.id),
+  requesterName: varchar("requester_name", { length: 255 }),
+  requesterDivisi: varchar("requester_divisi", { length: 100 }),
+  requesterNip: varchar("requester_nip", { length: 50 }),
   trackingNumber: varchar("tracking_number", { length: 20 }).unique().notNull(),
   poNumber: varchar("po_number", { length: 30 }).unique().notNull(),
   description: text("description").notNull(),
