@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { savings, users } from "@/lib/db/schema";
+import { savings } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
@@ -11,18 +12,11 @@ export async function GET() {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    if (!authUser) {
+    if (!authUser?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, authUser.id));
-
-    if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+    const dbUser = await getOrCreateUser(authUser);
 
     const userSavings = await db
       .select()

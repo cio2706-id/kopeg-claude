@@ -9,6 +9,7 @@ import {
   employeeData,
 } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { eq, and, isNull } from "drizzle-orm";
 import {
   insertJournal,
@@ -34,18 +35,11 @@ export async function POST(request: NextRequest) {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    if (!authUser) {
+    if (!authUser?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, authUser.id));
-
-    if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+    const dbUser = await getOrCreateUser(authUser);
 
     const body = await request.json();
     const parsed = approvalSchema.safeParse(body);
@@ -264,25 +258,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get or create DB user
-    let [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, authUser.id));
-
-    if (!dbUser) {
-      [dbUser] = await db
-        .insert(users)
-        .values({
-          authId: authUser.id,
-          email: authUser.email,
-          fullName:
-            authUser.user_metadata?.full_name ||
-            authUser.email.split("@")[0],
-          role: "member",
-        })
-        .returning();
-    }
+    const dbUser = await getOrCreateUser(authUser);
 
     // Pengurus pages pass ?view=all to see ALL pending approvals
     // Otherwise, non-member roles see all, members see only their role's approvals

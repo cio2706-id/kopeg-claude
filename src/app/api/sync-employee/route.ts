@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users, employeeData } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { getEmployeeByEmail } from "@/lib/accurate";
 import { eq } from "drizzle-orm";
 
@@ -16,24 +17,7 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get or create user in DB
-    let [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, authUser.id));
-
-    if (!dbUser) {
-      [dbUser] = await db
-        .insert(users)
-        .values({
-          authId: authUser.id,
-          email: authUser.email,
-          fullName:
-            authUser.user_metadata?.full_name || authUser.email.split("@")[0],
-          role: "member",
-        })
-        .returning();
-    }
+    const dbUser = await getOrCreateUser(authUser);
 
     // Fetch from Accurate API
     const employee = await getEmployeeByEmail(authUser.email);

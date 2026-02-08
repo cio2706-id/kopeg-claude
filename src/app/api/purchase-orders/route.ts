@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { purchaseOrders, poItems, approvals, users } from "@/lib/db/schema";
+import { purchaseOrders, poItems, approvals } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { generateTrackingNumber, generatePoNumber, PO_APPROVAL_STEPS } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -29,18 +30,11 @@ export async function POST(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (!user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, user.id));
-
-    if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+    const dbUser = await getOrCreateUser(user);
 
     const body = await request.json();
     const parsed = createPoSchema.safeParse(body);

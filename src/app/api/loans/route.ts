@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { loans, approvals, users } from "@/lib/db/schema";
+import { loans, approvals } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -33,25 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get or create DB user (same pattern as sync-employee)
-    let [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, authUser.id));
-
-    if (!dbUser) {
-      [dbUser] = await db
-        .insert(users)
-        .values({
-          authId: authUser.id,
-          email: authUser.email,
-          fullName:
-            authUser.user_metadata?.full_name ||
-            authUser.email.split("@")[0],
-          role: "member",
-        })
-        .returning();
-    }
+    const dbUser = await getOrCreateUser(authUser);
 
     const body = await request.json();
     const parsed = loanSchema.safeParse(body);
@@ -121,25 +104,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get or create DB user
-    let [dbUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.authId, authUser.id));
-
-    if (!dbUser) {
-      [dbUser] = await db
-        .insert(users)
-        .values({
-          authId: authUser.id,
-          email: authUser.email,
-          fullName:
-            authUser.user_metadata?.full_name ||
-            authUser.email.split("@")[0],
-          role: "member",
-        })
-        .returning();
-    }
+    const dbUser = await getOrCreateUser(authUser);
 
     // Pengurus pages pass ?view=all to see ALL loans
     // Otherwise, non-member roles see all, members see only their own
