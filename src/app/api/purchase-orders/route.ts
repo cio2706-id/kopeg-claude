@@ -13,6 +13,7 @@ const createPoSchema = z.object({
   requesterName: z.string().min(1).optional(),
   requesterDivisi: z.string().min(1).optional(),
   requesterNip: z.string().min(1).optional(),
+  documentUrls: z.array(z.string()).optional(),
   items: z
     .array(
       z.object({
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
         requesterName: parsed.data.requesterName,
         requesterDivisi: parsed.data.requesterDivisi,
         requesterNip: parsed.data.requesterNip,
+        documentUrls: parsed.data.documentUrls || null,
         status: "submitted",
       })
       .returning();

@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useState } from "react";
+import Link from "next/link";
 import {
   Search,
   Package,
@@ -12,8 +11,9 @@ import {
   Truck,
   FileText,
   CreditCard,
+  Building2,
+  ArrowLeft,
 } from "lucide-react";
-import DashboardLayout from "@/components/DashboardLayout";
 import { formatCurrency, PO_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
 
 interface PurchaseOrder {
@@ -65,31 +65,6 @@ export default function PoTrackPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [userEmail, setUserEmail] = useState("");
-  const [authLoading, setAuthLoading] = useState(true);
-  const router = useRouter();
-  const supabase = createSupabaseBrowserClient();
-
-  const checkAuth = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/member/login");
-      return;
-    }
-    setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "User");
-    setUserEmail(user.email || "");
-    setAuthLoading(false);
-  }, [router, supabase]);
-
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/member/login");
-  }
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -126,21 +101,32 @@ export default function PoTrackPage() {
 
   const progress = po ? STATUS_PROGRESS[po.status] || 0 : 0;
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-[#f4f7fe] flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
   return (
-    <DashboardLayout variant="member" userName={userName} onLogout={handleLogout}>
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-[#f0f0f0]">
+      {/* Header */}
+      <header className="bg-[#1a1a2e] text-white">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-teal-500 rounded-lg flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-lg">KopegBKI</span>
+          </div>
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Kembali ke Beranda
+          </Link>
+        </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-6 py-10">
         {/* Page Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-100 rounded-2xl mb-4">
-            <Package className="w-7 h-7 text-blue-600" />
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-teal-100 rounded-2xl mb-4">
+            <Package className="w-7 h-7 text-teal-600" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Lacak Purchase Order</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -157,13 +143,13 @@ export default function PoTrackPage() {
               value={trackingNumber}
               onChange={(e) => setTrackingNumber(e.target.value)}
               placeholder="Masukkan nomor tracking (contoh: PO260201ABCD)"
-              className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none shadow-sm"
+              className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all outline-none shadow-sm"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition-all shadow-lg shadow-blue-200"
+            className="bg-teal-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 transition-all shadow-lg shadow-teal-200"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -196,7 +182,7 @@ export default function PoTrackPage() {
                       ? "bg-green-100 text-green-700"
                       : po.status === "rejected"
                       ? "bg-red-100 text-red-700"
-                      : "bg-blue-100 text-blue-700"
+                      : "bg-teal-100 text-teal-700"
                   }`}
                 >
                   {PO_STATUS_LABELS[po.status] || po.status}
@@ -207,7 +193,7 @@ export default function PoTrackPage() {
               {po.status !== "rejected" && (
                 <div className="w-full bg-gray-100 rounded-full h-2.5">
                   <div
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-2.5 rounded-full transition-all duration-700 ease-out"
+                    className="bg-gradient-to-r from-teal-500 to-teal-600 h-2.5 rounded-full transition-all duration-700 ease-out"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -256,7 +242,7 @@ export default function PoTrackPage() {
                 </p>
                 <div className="space-y-1">
                   {[
-                    { key: "submitted", icon: <FileText className="w-4 h-4" />, label: "PO Dikirim" },
+                    { key: "submitted", icon: <FileText className="w-4 h-4" />, label: "PO Diajukan" },
                     { key: "review_pengadaan", icon: <Search className="w-4 h-4" />, label: "Review Staf Pengadaan" },
                     { key: "pending_manager", icon: <CheckCircle className="w-4 h-4" />, label: "Approval Manager (RAB)" },
                     { key: "spp_process", icon: <CreditCard className="w-4 h-4" />, label: "Proses SPP & Pembelian" },
@@ -281,7 +267,7 @@ export default function PoTrackPage() {
                               isComplete
                                 ? "bg-green-100 text-green-600"
                                 : isCurrent
-                                ? "bg-blue-100 text-blue-600"
+                                ? "bg-teal-100 text-teal-600"
                                 : "bg-gray-100 text-gray-300"
                             }`}
                           >
@@ -296,7 +282,7 @@ export default function PoTrackPage() {
                             isComplete
                               ? "text-gray-900 font-medium"
                               : isCurrent
-                              ? "text-blue-600 font-semibold"
+                              ? "text-teal-600 font-semibold"
                               : "text-gray-400"
                           }`}
                         >
@@ -367,7 +353,7 @@ export default function PoTrackPage() {
             </p>
           </div>
         )}
-      </div>
-    </DashboardLayout>
+      </main>
+    </div>
   );
 }

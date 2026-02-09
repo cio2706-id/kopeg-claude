@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ShoppingCart, Plus, Trash2, CheckCircle, Send, Info, Building2, ArrowLeft } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ShoppingCart, Plus, Trash2, CheckCircle, Send, Info, Building2, ArrowLeft, Upload } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface PoItem {
   itemName: string;
@@ -24,6 +25,15 @@ export default function PoRequestPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ trackingNumber: string; poNumber: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const supabase = createSupabaseBrowserClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setIsLoggedIn(true);
+    });
+  }, [supabase]);
 
   function addItem() {
     setItems([...items, { itemName: "", description: "", quantity: 1, unit: "pcs", unitPrice: 0 }]);
@@ -47,6 +57,19 @@ export default function PoRequestPage() {
     setError(null);
 
     try {
+      // Upload document if provided
+      let documentUrls: string[] = [];
+      if (documentFile) {
+        const formData = new FormData();
+        formData.append("file", documentFile);
+        formData.append("type", "po");
+        const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          documentUrls = [uploadData.url];
+        }
+      }
+
       const res = await fetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,6 +80,7 @@ export default function PoRequestPage() {
           requesterName,
           requesterDivisi,
           requesterNip,
+          documentUrls: documentUrls.length > 0 ? documentUrls : undefined,
         }),
       });
 
@@ -87,11 +111,11 @@ export default function PoRequestPage() {
               <span className="font-bold text-lg">KopegBKI</span>
             </div>
             <Link
-              href="/"
+              href={isLoggedIn ? "/member/dashboard" : "/"}
               className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              Kembali ke Beranda
+              {isLoggedIn ? "Kembali ke Dashboard" : "Kembali ke Beranda"}
             </Link>
           </div>
         </header>
@@ -121,11 +145,11 @@ export default function PoRequestPage() {
             </p>
 
             <Link
-              href="/"
+              href={isLoggedIn ? "/member/dashboard" : "/"}
               className="inline-flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-teal-600 transition-all shadow-lg shadow-teal-200"
             >
               <ArrowLeft className="w-4 h-4" />
-              Kembali ke Beranda
+              {isLoggedIn ? "Kembali ke Dashboard" : "Kembali ke Beranda"}
             </Link>
           </div>
         </main>
@@ -145,11 +169,11 @@ export default function PoRequestPage() {
             <span className="font-bold text-lg">KopegBKI</span>
           </div>
           <Link
-            href="/"
+            href={isLoggedIn ? "/member/dashboard" : "/"}
             className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Kembali ke Beranda
+            {isLoggedIn ? "Kembali ke Dashboard" : "Kembali ke Beranda"}
           </Link>
         </div>
       </header>
@@ -325,6 +349,44 @@ export default function PoRequestPage() {
                 <span className="text-xl font-bold text-teal-600">{formatCurrency(totalEstimate)}</span>
               </div>
             )}
+          </div>
+
+          {/* Document Upload */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Opsional)</h2>
+            <p className="text-xs text-gray-500 mb-3">
+              Upload dokumen pendukung seperti spesifikasi barang, penawaran harga, atau dokumen lainnya (PDF, maks 5MB).
+            </p>
+            <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
+              <Upload className="w-5 h-5 text-gray-400" />
+              <div className="flex-1">
+                {documentFile ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 truncate">{documentFile.name}</span>
+                    <span className="text-xs text-gray-400">({(documentFile.size / 1024).toFixed(0)} KB)</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setDocumentFile(null); }}
+                      className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                )}
+              </div>
+              <input
+                type="file"
+                accept=".pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && file.size <= 5 * 1024 * 1024) setDocumentFile(file);
+                  else if (file) alert("Ukuran file maks 5MB");
+                }}
+                className="hidden"
+              />
+            </label>
           </div>
 
           {/* Info Box */}

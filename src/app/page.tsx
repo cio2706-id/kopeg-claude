@@ -11,6 +11,7 @@ import {
   Calculator,
   ClipboardList,
   Receipt,
+  Search,
 } from "lucide-react";
 
 export default function HomePage() {
@@ -35,6 +36,12 @@ export default function HomePage() {
               className="text-teal-400 hover:text-teal-300 transition-colors"
             >
               Ajukan PO
+            </Link>
+            <Link
+              href="/po/track"
+              className="hover:text-white transition-colors"
+            >
+              Lacak PO
             </Link>
           </nav>
           <div className="flex items-center gap-3">
@@ -97,6 +104,13 @@ export default function HomePage() {
               >
                 <ClipboardList className="w-5 h-5" />
                 Ajukan PO
+              </Link>
+              <Link
+                href="/po/track"
+                className="inline-flex items-center gap-2 bg-white/10 backdrop-blur text-white px-7 py-3.5 rounded-2xl font-semibold border border-white/20 hover:bg-white/20 transition-colors"
+              >
+                <Search className="w-5 h-5" />
+                Lacak PO
               </Link>
               <Link
                 href="/pengurus/login"

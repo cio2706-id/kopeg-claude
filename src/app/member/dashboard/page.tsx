@@ -316,13 +316,13 @@ export default function MemberDashboardPage() {
               {card.icon}
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-gray-500 truncate">{card.label}</p>
+              <p className="text-xs text-gray-500 leading-tight">{card.label}</p>
               {card.sub && (
                 <p className="text-[10px] text-gray-400 font-mono">
                   COA {card.sub}
                 </p>
               )}
-              <p className="text-base font-bold text-gray-900 mt-0.5 truncate">
+              <p className="text-sm font-bold text-gray-900 mt-0.5 break-all leading-tight">
                 {formatCurrency(card.value)}
               </p>
             </div>

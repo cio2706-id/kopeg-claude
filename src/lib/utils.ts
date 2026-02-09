@@ -78,7 +78,7 @@ export const LOAN_STATUS_LABELS: Record<string, string> = {
 
 export const PO_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
-  submitted: "Dikirim",
+  submitted: "Diajukan",
   review_pengadaan: "Review Staf Pengadaan",
   pricing: "Penentuan Harga",
   pending_manager: "Menunggu Approval Manager",

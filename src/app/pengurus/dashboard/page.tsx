@@ -118,6 +118,7 @@ export default function PengurusDashboardPage() {
       if (approvalsRes.ok) {
         const data = await approvalsRes.json();
         setPendingApprovals(data.approvals || []);
+        if (data.userRole) setUserRole(data.userRole);
       }
       if (poRes.ok) {
         const data = await poRes.json();
@@ -200,11 +201,23 @@ export default function PengurusDashboardPage() {
 
   // ─── Derived data ─────────────────────────────────────────────────────────
 
-  const loanApprovals = pendingApprovals.filter(
-    (a) => a.referenceType === "loan" && !a.action
+  // Group by referenceId, only keep the CURRENT step (lowest stepOrder with no action)
+  const currentStepByRef = new Map<string, Approval>();
+  pendingApprovals
+    .filter((a) => !a.action)
+    .forEach((a) => {
+      const existing = currentStepByRef.get(a.referenceId);
+      if (!existing || a.stepOrder < existing.stepOrder) {
+        currentStepByRef.set(a.referenceId, a);
+      }
+    });
+  const currentPendingApprovals = Array.from(currentStepByRef.values());
+
+  const loanApprovals = currentPendingApprovals.filter(
+    (a) => a.referenceType === "loan"
   );
-  const poApprovals = pendingApprovals.filter(
-    (a) => a.referenceType === "purchase_order" && !a.action
+  const poApprovals = currentPendingApprovals.filter(
+    (a) => a.referenceType === "purchase_order"
   );
   const allPendingApprovals = [...loanApprovals, ...poApprovals];
 
@@ -534,30 +547,38 @@ export default function PengurusDashboardPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                    <button
-                      onClick={() => handleApproval(approval.id, "approve")}
-                      disabled={actionLoading === approval.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Setujui
-                    </button>
-                    <button
-                      onClick={() =>
-                        handleApproval(
-                          approval.id,
-                          "reject",
-                          "Ditolak oleh pengurus"
-                        )
-                      }
-                      disabled={actionLoading === approval.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Tolak
-                    </button>
-                  </div>
+                  {userRole === approval.approverRole ? (
+                    <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+                      <button
+                        onClick={() => handleApproval(approval.id, "approve")}
+                        disabled={actionLoading === approval.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Setujui
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleApproval(
+                            approval.id,
+                            "reject",
+                            "Ditolak oleh pengurus"
+                          )
+                        }
+                        disabled={actionLoading === approval.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Tolak
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <p className="text-xs text-gray-400 text-center">
+                        Menunggu tindakan dari {ROLE_LABELS[approval.approverRole] || approval.approverRole}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })}

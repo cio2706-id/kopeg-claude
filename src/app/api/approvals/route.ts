@@ -281,7 +281,7 @@ export async function GET(request: NextRequest) {
               )
             );
 
-    return NextResponse.json({ approvals: pendingApprovals });
+    return NextResponse.json({ approvals: pendingApprovals, userRole: dbUser.role });
   } catch (error) {
     console.error("Failed to fetch approvals:", error);
     return NextResponse.json(

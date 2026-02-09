@@ -14,6 +14,7 @@ const loanSchema = z.object({
   tenorMonths: z.number().int().min(1).max(60),
   purpose: z.string().optional(),
   interestRate: z.number().min(0).max(100).optional(),
+  documentUrls: z.array(z.string()).optional(),
 });
 
 const INTEREST_RATES: Record<string, number> = {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
         tenorMonths: parsed.data.tenorMonths,
         monthlyInstallment: Math.round(monthlyInstallment).toString(),
         purpose: parsed.data.purpose,
+        documentUrls: parsed.data.documentUrls || null,
         status: "pending_treasury",
         coaCode,
       })
