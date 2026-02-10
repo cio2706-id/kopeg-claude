@@ -18,6 +18,7 @@ import {
   Users,
   CheckSquare,
   BarChart3,
+  Upload,
   Building2,
   Mail,
   UserCircle,
@@ -47,6 +48,7 @@ const pengurusNav: NavItem[] = [
   { label: "Persetujuan", href: "/pengurus/approvals", icon: <CheckSquare className="w-5 h-5" /> },
   { label: "Purchase Order", href: "/pengurus/po", icon: <ShoppingCart className="w-5 h-5" /> },
   { label: "Pinjaman", href: "/pengurus/loans", icon: <CreditCard className="w-5 h-5" /> },
+  { label: "Data Management", href: "/pengurus/data-management", icon: <Upload className="w-5 h-5" /> },
   { label: "Laporan", href: "/pengurus/reports", icon: <BarChart3 className="w-5 h-5" />, section: "GENERAL" },
   { label: "Pengaturan", href: "/pengurus/settings", icon: <Settings className="w-5 h-5" /> },
 ];

@@ -252,6 +252,52 @@ export const approvals = pgTable("approvals", {
 
 // ─── Content ────────────────────────────────────────────────────────────────
 
+// ─── Loan Balances (Imported from kertas kerja) ────────────────────────────
+
+export const loanBalances = pgTable("loan_balances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
+  loanType: varchar("loan_type", { length: 50 }).notNull(), // reguler, khusus, barang, channeling_mandiri, channeling_bsi
+  period: varchar("period", { length: 7 }).notNull(), // "2025-12"
+  saldo: numeric("saldo", { precision: 15, scale: 2 }).default("0"),
+  uploadBatchId: varchar("upload_batch_id", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─── Monthly Deductions (Potongan bulanan) ─────────────────────────────────
+
+export const monthlyDeductions = pgTable("monthly_deductions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
+  period: varchar("period", { length: 7 }).notNull(), // "2026-01"
+  sourceFile: varchar("source_file", { length: 100 }), // bki_tetap, ids, kontrak_mns, sbu_industri, sbu_energi
+  simpananAmount: numeric("simpanan_amount", { precision: 15, scale: 2 }).default("0"),
+  pinjamanAmount: numeric("pinjaman_amount", { precision: 15, scale: 2 }).default("0"),
+  uploadBatchId: varchar("upload_batch_id", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Upload Logs ───────────────────────────────────────────────────────────
+
+export const uploadLogs = pgTable("upload_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  uploadType: varchar("upload_type", { length: 50 }).notNull(), // simpanan_saldo, pinjaman_saldo, potongan_bulanan
+  period: varchar("period", { length: 7 }).notNull(),
+  fileName: varchar("file_name", { length: 255 }),
+  subType: varchar("sub_type", { length: 50 }), // loan type or source file type
+  recordCount: integer("record_count").default(0),
+  totalAmount: numeric("total_amount", { precision: 15, scale: 2 }),
+  uploadedBy: uuid("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Content ────────────────────────────────────────────────────────────────
+
 export const promotions = pgTable("promotions", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: varchar("title", { length: 255 }).notNull(),
@@ -286,3 +332,6 @@ export type PaymentRequest = typeof paymentRequests.$inferSelect;
 export type Approval = typeof approvals.$inferSelect;
 export type Promotion = typeof promotions.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type LoanBalance = typeof loanBalances.$inferSelect;
+export type MonthlyDeduction = typeof monthlyDeductions.$inferSelect;
+export type UploadLog = typeof uploadLogs.$inferSelect;

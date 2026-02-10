@@ -52,6 +52,21 @@ interface LoanBalances {
   travel: number;
 }
 
+interface ImportedSimpanan {
+  period: string;
+  wajib: string;
+  pokok: string;
+  khusus: string;
+  sukarela: string;
+  shu: string;
+  total: string;
+}
+
+interface ImportedPinjaman {
+  byType: Record<string, number>;
+  total: number;
+}
+
 /* ------------------------------------------------------------------ */
 /*  COA map & loan-type metadata                                       */
 /* ------------------------------------------------------------------ */
@@ -61,6 +76,8 @@ const LOAN_COA: Record<string, string> = {
   khusus: "110305",
   barang: "110306",
   travel: "110307",
+  channeling_mandiri: "-",
+  channeling_bsi: "-",
 };
 
 const LOAN_MAX: Record<string, number> = {
@@ -68,6 +85,8 @@ const LOAN_MAX: Record<string, number> = {
   khusus: 30_000_000,
   barang: 20_000_000,
   travel: 15_000_000,
+  channeling_mandiri: 100_000_000,
+  channeling_bsi: 100_000_000,
 };
 
 const LOAN_COLORS: Record<string, string> = {
@@ -75,6 +94,17 @@ const LOAN_COLORS: Record<string, string> = {
   khusus: "#6366f1",
   barang: "#f59e0b",
   travel: "#ef4444",
+  channeling_mandiri: "#3b82f6",
+  channeling_bsi: "#8b5cf6",
+};
+
+const LOAN_TYPE_LABELS_EXTENDED: Record<string, string> = {
+  reguler: "Pinjaman Reguler",
+  khusus: "Pinjaman Khusus",
+  barang: "Pinjaman Barang",
+  travel: "Pinjaman Travel",
+  channeling_mandiri: "Channeling Mandiri",
+  channeling_bsi: "Channeling BSI",
 };
 
 /* ------------------------------------------------------------------ */
@@ -151,6 +181,8 @@ export default function MemberDashboardPage() {
     barang: 0,
     travel: 0,
   });
+  const [importedSimpanan, setImportedSimpanan] = useState<ImportedSimpanan | null>(null);
+  const [importedPinjaman, setImportedPinjaman] = useState<ImportedPinjaman | null>(null);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -173,10 +205,11 @@ export default function MemberDashboardPage() {
     setUserEmail(user.email || "");
 
     try {
-      const [savingsRes, loansRes, balancesRes] = await Promise.all([
+      const [savingsRes, loansRes, balancesRes, memberBalancesRes] = await Promise.all([
         fetch("/api/savings"),
         fetch("/api/loans"),
         fetch("/api/accurate-balances"),
+        fetch("/api/member-balances"),
       ]);
 
       if (savingsRes.ok) {
@@ -192,6 +225,11 @@ export default function MemberDashboardPage() {
         setBalances(
           data.balances || { reguler: 0, khusus: 0, barang: 0, travel: 0 }
         );
+      }
+      if (memberBalancesRes.ok) {
+        const data = await memberBalancesRes.json();
+        if (data.simpanan) setImportedSimpanan(data.simpanan);
+        if (data.pinjaman) setImportedPinjaman(data.pinjaman);
       }
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
@@ -212,7 +250,34 @@ export default function MemberDashboardPage() {
   /* ---- derived data ---- */
 
   const latestSaving = savings[0];
-  const totalSavings = latestSaving ? parseFloat(latestSaving.totalBalance) : 0;
+  // Prefer imported simpanan total if available
+  const totalSavings = importedSimpanan
+    ? parseFloat(importedSimpanan.total || "0")
+    : latestSaving
+    ? parseFloat(latestSaving.totalBalance)
+    : 0;
+
+  // Merge imported pinjaman with Accurate balances (imported takes precedence)
+  const mergedBalances: Record<string, number> = {
+    reguler: balances.reguler,
+    khusus: balances.khusus,
+    barang: balances.barang,
+    travel: balances.travel,
+  };
+  if (importedPinjaman) {
+    for (const [type, amount] of Object.entries(importedPinjaman.byType)) {
+      mergedBalances[type] = amount;
+    }
+  }
+
+  // All active loan types (including channeling)
+  const activeLoanTypes = Object.entries(mergedBalances)
+    .filter(([, amount]) => amount > 0)
+    .map(([type]) => type);
+  // Always show at least the 4 standard types
+  const displayLoanTypes = Array.from(
+    new Set(["reguler", "khusus", "barang", "travel", ...activeLoanTypes])
+  );
 
   const recentLoans = [...loans]
     .sort(
@@ -236,53 +301,54 @@ export default function MemberDashboardPage() {
 
   /* ---- card definitions ---- */
 
-  const summaryCards = [
+  const loanIcons: Record<string, React.ReactNode> = {
+    reguler: <CreditCard className="w-5 h-5 text-teal-600" />,
+    khusus: <TrendingUp className="w-5 h-5 text-indigo-600" />,
+    barang: <Package className="w-5 h-5 text-amber-600" />,
+    travel: <Plane className="w-5 h-5 text-red-600" />,
+    channeling_mandiri: <CreditCard className="w-5 h-5 text-blue-600" />,
+    channeling_bsi: <CreditCard className="w-5 h-5 text-purple-600" />,
+  };
+
+  const loanBgs: Record<string, string> = {
+    reguler: "bg-teal-100",
+    khusus: "bg-indigo-100",
+    barang: "bg-amber-100",
+    travel: "bg-red-100",
+    channeling_mandiri: "bg-blue-100",
+    channeling_bsi: "bg-purple-100",
+  };
+
+  const summaryCards: Array<{
+    label: string;
+    sub?: string;
+    value: number;
+    icon: React.ReactNode;
+    bg: string;
+  }> = [
     {
       label: "Simpanan",
       value: totalSavings,
       icon: <Wallet className="w-5 h-5 text-blue-600" />,
       bg: "bg-blue-100",
     },
-    {
-      label: "Pinjaman Reguler",
-      sub: LOAN_COA.reguler,
-      value: balances.reguler,
-      icon: <CreditCard className="w-5 h-5 text-teal-600" />,
-      bg: "bg-teal-100",
-    },
-    {
-      label: "Pinjaman Khusus",
-      sub: LOAN_COA.khusus,
-      value: balances.khusus,
-      icon: <TrendingUp className="w-5 h-5 text-gray-600" />,
-      bg: "bg-gray-200",
-    },
-    {
-      label: "Pinjaman Barang",
-      sub: LOAN_COA.barang,
-      value: balances.barang,
-      icon: <Package className="w-5 h-5 text-gray-600" />,
-      bg: "bg-gray-200",
-    },
-    {
-      label: "Pinjaman Travel",
-      sub: LOAN_COA.travel,
-      value: balances.travel,
-      icon: <Plane className="w-5 h-5 text-gray-600" />,
-      bg: "bg-gray-200",
-    },
+    ...displayLoanTypes.map((type) => ({
+      label: LOAN_TYPE_LABELS_EXTENDED[type] || type,
+      sub: LOAN_COA[type] && LOAN_COA[type] !== "-" ? LOAN_COA[type] : undefined,
+      value: mergedBalances[type] || 0,
+      icon: loanIcons[type] || <CreditCard className="w-5 h-5 text-gray-600" />,
+      bg: loanBgs[type] || "bg-gray-200",
+    })),
   ];
 
-  /* bottom pinjaman cards - pick 3 types with highest balances */
-  const pinjamanCards = (["reguler", "khusus", "barang"] as const).map(
-    (type) => ({
-      type,
-      label: LOAN_TYPE_LABELS[type],
-      coa: LOAN_COA[type],
-      amount: balances[type],
-      color: LOAN_COLORS[type],
-    })
-  );
+  /* bottom pinjaman cards - all active loan types */
+  const pinjamanCards = displayLoanTypes.map((type) => ({
+    type,
+    label: LOAN_TYPE_LABELS_EXTENDED[type] || type,
+    coa: LOAN_COA[type] && LOAN_COA[type] !== "-" ? LOAN_COA[type] : undefined,
+    amount: mergedBalances[type] || 0,
+    color: LOAN_COLORS[type] || "#6b7280",
+  }));
 
   /* ---- render ---- */
 
@@ -304,7 +370,7 @@ export default function MemberDashboardPage() {
       {/* ============================================================ */}
       {/*  1. SUMMARY CARDS                                            */}
       {/* ============================================================ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${summaryCards.length > 5 ? "lg:grid-cols-3 xl:grid-cols-4" : "lg:grid-cols-5"} gap-4 mb-6`}>
         {summaryCards.map((card) => (
           <div
             key={card.label}
@@ -448,7 +514,40 @@ export default function MemberDashboardPage() {
       </div>
 
       {/* ============================================================ */}
-      {/*  4. PINJAMAN CARDS  +  5. STATISTIK PINJAMAN                 */}
+      {/*  4. SIMPANAN BREAKDOWN (imported data)                        */}
+      {/* ============================================================ */}
+      {importedSimpanan && (
+        <div className="bg-white rounded-2xl p-5 shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-900 text-sm">
+              Rincian Simpanan
+            </h2>
+            <p className="text-[10px] text-gray-400">
+              Periode: {importedSimpanan.period}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {[
+              { label: "Wajib", value: importedSimpanan.wajib },
+              { label: "Pokok", value: importedSimpanan.pokok },
+              { label: "Khusus", value: importedSimpanan.khusus },
+              { label: "Sukarela", value: importedSimpanan.sukarela },
+              { label: "SHU", value: importedSimpanan.shu },
+              { label: "Total", value: importedSimpanan.total },
+            ].map((item) => (
+              <div key={item.label} className={`p-3 rounded-xl ${item.label === "Total" ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}>
+                <p className="text-xs text-gray-500">{item.label}</p>
+                <p className={`text-sm font-bold mt-1 ${item.label === "Total" ? "text-blue-700" : "text-gray-900"}`}>
+                  {formatCurrency(parseFloat(item.value || "0"))}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/*  5. PINJAMAN CARDS  +  6. STATISTIK PINJAMAN                 */}
       {/* ============================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* --- Pinjaman cards --- */}
@@ -476,9 +575,11 @@ export default function MemberDashboardPage() {
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {card.label}
                     </p>
-                    <p className="text-[10px] text-gray-400 font-mono">
-                      COA {card.coa}
-                    </p>
+                    {card.coa && (
+                      <p className="text-[10px] text-gray-400 font-mono">
+                        COA {card.coa}
+                      </p>
+                    )}
                   </div>
                   <p className="text-sm font-bold text-gray-900 whitespace-nowrap">
                     {formatCurrency(card.amount)}
@@ -508,45 +609,41 @@ export default function MemberDashboardPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-              {(["reguler", "khusus", "barang", "travel"] as const).map(
-                (type) => (
-                  <div key={type} className="flex flex-col items-center gap-2">
-                    <SemiCircleGauge
-                      value={balances[type]}
-                      max={LOAN_MAX[type]}
-                      color={LOAN_COLORS[type]}
-                      label={
-                        LOAN_TYPE_LABELS[type]?.replace("Pinjaman ", "") || type
-                      }
-                    />
-                    <p className="text-xs font-semibold text-gray-900">
-                      {formatCurrency(balances[type])}
-                    </p>
-                    <p className="text-[10px] text-gray-400">
-                      / {formatCurrency(LOAN_MAX[type])}
-                    </p>
-                  </div>
-                )
-              )}
+            <div className={`grid grid-cols-2 ${displayLoanTypes.length > 4 ? "sm:grid-cols-3" : "sm:grid-cols-4"} gap-6`}>
+              {displayLoanTypes.map((type) => (
+                <div key={type} className="flex flex-col items-center gap-2">
+                  <SemiCircleGauge
+                    value={mergedBalances[type] || 0}
+                    max={LOAN_MAX[type] || 100_000_000}
+                    color={LOAN_COLORS[type] || "#6b7280"}
+                    label={
+                      (LOAN_TYPE_LABELS_EXTENDED[type] || type).replace("Pinjaman ", "")
+                    }
+                  />
+                  <p className="text-xs font-semibold text-gray-900">
+                    {formatCurrency(mergedBalances[type] || 0)}
+                  </p>
+                  <p className="text-[10px] text-gray-400">
+                    / {formatCurrency(LOAN_MAX[type] || 100_000_000)}
+                  </p>
+                </div>
+              ))}
             </div>
 
             {/* Mini legend */}
             <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap gap-4 justify-center">
-              {(["reguler", "khusus", "barang", "travel"] as const).map(
-                (type) => (
+              {displayLoanTypes.map((type) => (
+                <span
+                  key={type}
+                  className="flex items-center gap-1.5 text-xs text-gray-500"
+                >
                   <span
-                    key={type}
-                    className="flex items-center gap-1.5 text-xs text-gray-500"
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: LOAN_COLORS[type] }}
-                    />
-                    {LOAN_TYPE_LABELS[type]?.replace("Pinjaman ", "")}
-                  </span>
-                )
-              )}
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: LOAN_COLORS[type] || "#6b7280" }}
+                  />
+                  {(LOAN_TYPE_LABELS_EXTENDED[type] || type).replace("Pinjaman ", "")}
+                </span>
+              ))}
             </div>
           </div>
         </div>
