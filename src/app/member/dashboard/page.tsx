@@ -45,13 +45,6 @@ interface Loan {
   createdAt: string;
 }
 
-interface LoanBalances {
-  reguler: number;
-  khusus: number;
-  barang: number;
-  travel: number;
-}
-
 interface ImportedSimpanan {
   period: string;
   wajib: string;
@@ -175,12 +168,6 @@ function SemiCircleGauge({
 export default function MemberDashboardPage() {
   const [savings, setSavings] = useState<Saving[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [balances, setBalances] = useState<LoanBalances>({
-    reguler: 0,
-    khusus: 0,
-    barang: 0,
-    travel: 0,
-  });
   const [importedSimpanan, setImportedSimpanan] = useState<ImportedSimpanan | null>(null);
   const [importedPinjaman, setImportedPinjaman] = useState<ImportedPinjaman | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,10 +192,9 @@ export default function MemberDashboardPage() {
     setUserEmail(user.email || "");
 
     try {
-      const [savingsRes, loansRes, balancesRes, memberBalancesRes] = await Promise.all([
+      const [savingsRes, loansRes, memberBalancesRes] = await Promise.all([
         fetch("/api/savings"),
         fetch("/api/loans"),
-        fetch("/api/accurate-balances"),
         fetch("/api/member-balances"),
       ]);
 
@@ -219,12 +205,6 @@ export default function MemberDashboardPage() {
       if (loansRes.ok) {
         const data = await loansRes.json();
         setLoans(data.loans || []);
-      }
-      if (balancesRes.ok) {
-        const data = await balancesRes.json();
-        setBalances(
-          data.balances || { reguler: 0, khusus: 0, barang: 0, travel: 0 }
-        );
       }
       if (memberBalancesRes.ok) {
         const data = await memberBalancesRes.json();
@@ -257,27 +237,19 @@ export default function MemberDashboardPage() {
     ? parseFloat(latestSaving.totalBalance)
     : 0;
 
-  // Merge imported pinjaman with Accurate balances (imported takes precedence)
-  const mergedBalances: Record<string, number> = {
-    reguler: balances.reguler,
-    khusus: balances.khusus,
-    barang: balances.barang,
-    travel: balances.travel,
-  };
-  if (importedPinjaman) {
-    for (const [type, amount] of Object.entries(importedPinjaman.byType)) {
-      mergedBalances[type] = amount;
-    }
-  }
+  // Pinjaman balances from imported Excel data (loan_balances table)
+  const mergedBalances: Record<string, number> = importedPinjaman
+    ? { ...importedPinjaman.byType }
+    : {};
 
-  // All active loan types (including channeling)
+  // All loan types with data (including channeling)
   const activeLoanTypes = Object.entries(mergedBalances)
     .filter(([, amount]) => amount > 0)
     .map(([type]) => type);
-  // Always show at least the 4 standard types
-  const displayLoanTypes = Array.from(
-    new Set(["reguler", "khusus", "barang", "travel", ...activeLoanTypes])
-  );
+  // Show types that have data, plus standard 4 as fallback if no data at all
+  const displayLoanTypes = activeLoanTypes.length > 0
+    ? activeLoanTypes
+    : ["reguler", "khusus", "barang", "channeling_mandiri", "channeling_bsi"];
 
   const recentLoans = [...loans]
     .sort(
