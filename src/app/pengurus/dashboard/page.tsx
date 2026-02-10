@@ -148,7 +148,7 @@ export default function PengurusDashboardPage() {
         user.user_metadata?.full_name || user.email?.split("@")[0] || "Pengurus"
       );
       setUserEmail(user.email || "");
-      setUserRole(user.user_metadata?.role || "staf_treasury");
+      setUserRole(user.user_metadata?.role || "");
       loadData();
     }
     init();
@@ -201,7 +201,7 @@ export default function PengurusDashboardPage() {
 
   // ─── Derived data ─────────────────────────────────────────────────────────
 
-  // Group by referenceId, only keep the CURRENT step (lowest stepOrder with no action)
+  // Step 1: Group by referenceId, keep only the CURRENT step (lowest stepOrder with no action)
   const currentStepByRef = new Map<string, Approval>();
   pendingApprovals
     .filter((a) => !a.action)
@@ -211,12 +211,16 @@ export default function PengurusDashboardPage() {
         currentStepByRef.set(a.referenceId, a);
       }
     });
-  const currentPendingApprovals = Array.from(currentStepByRef.values());
 
-  const loanApprovals = currentPendingApprovals.filter(
+  // Step 2: Only show approvals where the current step matches the logged-in user's role
+  const myPendingApprovals = Array.from(currentStepByRef.values()).filter(
+    (a) => a.approverRole === userRole
+  );
+
+  const loanApprovals = myPendingApprovals.filter(
     (a) => a.referenceType === "loan"
   );
-  const poApprovals = currentPendingApprovals.filter(
+  const poApprovals = myPendingApprovals.filter(
     (a) => a.referenceType === "purchase_order"
   );
   const allPendingApprovals = [...loanApprovals, ...poApprovals];
@@ -547,38 +551,30 @@ export default function PengurusDashboardPage() {
                     </div>
                   </div>
 
-                  {userRole === approval.approverRole ? (
-                    <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                      <button
-                        onClick={() => handleApproval(approval.id, "approve")}
-                        disabled={actionLoading === approval.id}
-                        className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        Setujui
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleApproval(
-                            approval.id,
-                            "reject",
-                            "Ditolak oleh pengurus"
-                          )
-                        }
-                        disabled={actionLoading === approval.id}
-                        className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        Tolak
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <p className="text-xs text-gray-400 text-center">
-                        Menunggu tindakan dari {ROLE_LABELS[approval.approverRole] || approval.approverRole}
-                      </p>
-                    </div>
-                  )}
+                  <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+                    <button
+                      onClick={() => handleApproval(approval.id, "approve")}
+                      disabled={actionLoading === approval.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Setujui
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleApproval(
+                          approval.id,
+                          "reject",
+                          "Ditolak oleh pengurus"
+                        )
+                      }
+                      disabled={actionLoading === approval.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Tolak
+                    </button>
+                  </div>
                 </div>
               );
             })}
