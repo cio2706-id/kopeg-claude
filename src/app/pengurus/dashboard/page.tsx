@@ -118,7 +118,14 @@ export default function PengurusDashboardPage() {
       if (approvalsRes.ok) {
         const data = await approvalsRes.json();
         setPendingApprovals(data.approvals || []);
-        if (data.userRole) setUserRole(data.userRole);
+        if (data.userRole) {
+          setUserRole(data.userRole);
+          // Redirect members - they shouldn't access pengurus dashboard
+          if (data.userRole === "member") {
+            router.push("/member/dashboard");
+            return;
+          }
+        }
       }
       if (poRes.ok) {
         const data = await poRes.json();
@@ -201,26 +208,11 @@ export default function PengurusDashboardPage() {
 
   // ─── Derived data ─────────────────────────────────────────────────────────
 
-  // Step 1: Group by referenceId, keep only the CURRENT step (lowest stepOrder with no action)
-  const currentStepByRef = new Map<string, Approval>();
-  pendingApprovals
-    .filter((a) => !a.action)
-    .forEach((a) => {
-      const existing = currentStepByRef.get(a.referenceId);
-      if (!existing || a.stepOrder < existing.stepOrder) {
-        currentStepByRef.set(a.referenceId, a);
-      }
-    });
-
-  // Step 2: Only show approvals where the current step matches the logged-in user's role
-  const myPendingApprovals = Array.from(currentStepByRef.values()).filter(
-    (a) => a.approverRole === userRole
-  );
-
-  const loanApprovals = myPendingApprovals.filter(
+  // API already filters: only current step per reference + matching user's role
+  const loanApprovals = pendingApprovals.filter(
     (a) => a.referenceType === "loan"
   );
-  const poApprovals = myPendingApprovals.filter(
+  const poApprovals = pendingApprovals.filter(
     (a) => a.referenceType === "purchase_order"
   );
   const allPendingApprovals = [...loanApprovals, ...poApprovals];

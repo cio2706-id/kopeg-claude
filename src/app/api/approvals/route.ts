@@ -260,28 +260,48 @@ export async function GET(request: NextRequest) {
 
     const dbUser = await getOrCreateUser(authUser);
 
-    // Pengurus pages pass ?view=all to see ALL pending approvals
-    // Otherwise, non-member roles see all, members see only their role's approvals
     const { searchParams } = new URL(request.url);
     const viewAll = searchParams.get("view") === "all";
 
-    const pendingApprovals =
-      viewAll || dbUser.role !== "member"
-        ? await db
-            .select()
-            .from(approvals)
-            .where(isNull(approvals.action))
-        : await db
-            .select()
-            .from(approvals)
-            .where(
-              and(
-                eq(approvals.approverRole, dbUser.role),
-                isNull(approvals.action)
-              )
-            );
+    // Get all pending approvals (no action taken yet)
+    const allPending = await db
+      .select()
+      .from(approvals)
+      .where(isNull(approvals.action));
 
-    return NextResponse.json({ approvals: pendingApprovals, userRole: dbUser.role });
+    // Group by referenceId, keep only the CURRENT step (lowest stepOrder)
+    const currentStepByRef = new Map<string, typeof allPending[0]>();
+    for (const a of allPending) {
+      const existing = currentStepByRef.get(a.referenceId);
+      if (!existing || a.stepOrder < existing.stepOrder) {
+        currentStepByRef.set(a.referenceId, a);
+      }
+    }
+    const currentSteps = Array.from(currentStepByRef.values());
+
+    // For pengurus dashboard (view=all): only return items matching user's role
+    // For member: return items matching their role (usually none)
+    let filteredApprovals;
+    if (viewAll) {
+      // Pengurus dashboard: only show items where current step matches this user's role
+      filteredApprovals = currentSteps.filter(
+        (a) => a.approverRole === dbUser.role
+      );
+    } else if (dbUser.role !== "member") {
+      // Pengurus approvals page: show all current steps
+      filteredApprovals = currentSteps;
+    } else {
+      // Member: only their role's approvals
+      filteredApprovals = currentSteps.filter(
+        (a) => a.approverRole === dbUser.role
+      );
+    }
+
+    return NextResponse.json({
+      approvals: filteredApprovals,
+      userRole: dbUser.role,
+      totalPendingAll: currentSteps.length,
+    });
   } catch (error) {
     console.error("Failed to fetch approvals:", error);
     return NextResponse.json(
