@@ -19,6 +19,7 @@ import {
   Loader2,
   Clock,
   X,
+  Users,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -26,7 +27,10 @@ import {
 interface UploadResult {
   success: boolean;
   processed?: number;
+  created?: number;
+  updated?: number;
   skipped?: number;
+  total?: number;
   totalAmount?: number;
   totalSimpanan?: number;
   totalPinjaman?: number;
@@ -46,9 +50,14 @@ interface UploadLog {
   totalAmount: number;
 }
 
-type TabKey = "simpanan" | "pinjaman" | "potongan";
+type TabKey = "anggota" | "simpanan" | "pinjaman" | "potongan";
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  {
+    key: "anggota",
+    label: "Data Anggota",
+    icon: <Users className="w-4 h-4" />,
+  },
   {
     key: "simpanan",
     label: "Saldo Simpanan",
@@ -96,7 +105,13 @@ export default function PengurusDataManagementPage() {
   const supabase = createSupabaseBrowserClient();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<TabKey>("simpanan");
+  const [activeTab, setActiveTab] = useState<TabKey>("anggota");
+
+  // Anggota state
+  const [anggotaFile, setAnggotaFile] = useState<File | null>(null);
+  const [anggotaUploading, setAnggotaUploading] = useState(false);
+  const [anggotaResult, setAnggotaResult] = useState<UploadResult | null>(null);
+  const anggotaInputRef = useRef<HTMLInputElement>(null);
 
   // Simpanan state
   const [simpananPeriod, setSimpananPeriod] = useState("2025-12");
@@ -173,6 +188,27 @@ export default function PengurusDataManagementPage() {
   }
 
   // ─── Upload handlers ─────────────────────────────────────────────────────
+
+  async function handleAnggotaUpload() {
+    if (!anggotaFile) return;
+    setAnggotaUploading(true);
+    setAnggotaResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", anggotaFile);
+      const res = await fetch("/api/upload/member-database", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      setAnggotaResult(res.ok ? { success: true, ...data } : { success: false, ...data });
+      if (res.ok) loadLogs();
+    } catch {
+      setAnggotaResult({ success: false, error: "Gagal mengunggah file" });
+    } finally {
+      setAnggotaUploading(false);
+    }
+  }
 
   async function handleSimpananUpload() {
     if (!simpananFile) return;
@@ -299,6 +335,33 @@ export default function PengurusDataManagementPage() {
         </div>
 
         <div className="p-6">
+          {/* Tab 0: Data Anggota */}
+          {activeTab === "anggota" && (
+            <UploadSection
+              title="Upload Data Anggota Koperasi"
+              description="Upload file DATA ANGGOTA KOPERASI UPDATE.xlsx untuk memperbarui database anggota. Data anggota lama akan diganti dengan data baru."
+              file={anggotaFile}
+              onFileChange={setAnggotaFile}
+              inputRef={anggotaInputRef}
+              uploading={anggotaUploading}
+              onUpload={handleAnggotaUpload}
+              result={anggotaResult}
+              onClearResult={() => setAnggotaResult(null)}
+            >
+              <div className="sm:col-span-2">
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-700">
+                  <p className="font-medium">Catatan:</p>
+                  <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs">
+                    <li>File harus memiliki sheet &quot;ALL&quot;</li>
+                    <li>Kolom: NUP, Nama, Perusahaan, Departemen, Unit Penempatan, Jabatan, Email, Status</li>
+                    <li>Anggota yang tidak ada di file baru akan dinonaktifkan</li>
+                    <li>Akun pengurus (non-member) tidak akan terpengaruh</li>
+                  </ul>
+                </div>
+              </div>
+            </UploadSection>
+          )}
+
           {/* Tab 1: Saldo Simpanan */}
           {activeTab === "simpanan" && (
             <UploadSection
@@ -662,6 +725,18 @@ function UploadResultDisplay({ result }: { result: UploadResult }) {
           <div className="bg-white rounded-lg p-3">
             <p className="text-xs text-gray-500">Diproses</p>
             <p className="text-lg font-semibold text-gray-900">{result.processed}</p>
+          </div>
+        )}
+        {result.created !== undefined && (
+          <div className="bg-white rounded-lg p-3">
+            <p className="text-xs text-gray-500">Baru Dibuat</p>
+            <p className="text-lg font-semibold text-green-600">{result.created}</p>
+          </div>
+        )}
+        {result.updated !== undefined && (
+          <div className="bg-white rounded-lg p-3">
+            <p className="text-xs text-gray-500">Diperbarui</p>
+            <p className="text-lg font-semibold text-blue-600">{result.updated}</p>
           </div>
         )}
         {result.skipped !== undefined && (
