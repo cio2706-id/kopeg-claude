@@ -29,6 +29,7 @@ interface UploadResult {
   processed?: number;
   created?: number;
   updated?: number;
+  deleted?: number;
   skipped?: number;
   total?: number;
   totalAmount?: number;
@@ -354,7 +355,7 @@ export default function PengurusDataManagementPage() {
                   <ul className="mt-1 list-disc list-inside space-y-0.5 text-xs">
                     <li>File harus memiliki sheet &quot;ALL&quot;</li>
                     <li>Kolom: NUP, Nama, Perusahaan, Departemen, Unit Penempatan, Jabatan, Email, Status</li>
-                    <li>Anggota yang tidak ada di file baru akan dinonaktifkan</li>
+                    <li>Anggota lama yang tidak ada di file baru akan dihapus</li>
                     <li>Akun pengurus (non-member) tidak akan terpengaruh</li>
                   </ul>
                 </div>
@@ -737,6 +738,12 @@ function UploadResultDisplay({ result }: { result: UploadResult }) {
           <div className="bg-white rounded-lg p-3">
             <p className="text-xs text-gray-500">Diperbarui</p>
             <p className="text-lg font-semibold text-blue-600">{result.updated}</p>
+          </div>
+        )}
+        {result.deleted !== undefined && (
+          <div className="bg-white rounded-lg p-3">
+            <p className="text-xs text-gray-500">Dihapus</p>
+            <p className="text-lg font-semibold text-red-600">{result.deleted}</p>
           </div>
         )}
         {result.skipped !== undefined && (

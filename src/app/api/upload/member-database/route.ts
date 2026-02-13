@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { users, employeeData, uploadLogs } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { randomUUID } from "crypto";
 
@@ -14,10 +14,11 @@ import { randomUUID } from "crypto";
  *   E(4): Unit Penempatan, F(5): Jabatan, G(6): EMAIL,
  *   H(7): STATUS (AKTIF/PASIF), I(8): Simpanan, J(9): Pinjaman
  *
- * Strategy: Replace existing member data with new Excel data.
+ * Strategy: Clean replace of existing member data.
  * - Pengurus (non-member roles) are NOT affected.
- * - Existing members NOT in the new file are marked inactive.
- * - Members in the file are upserted by email.
+ * - Old members with no financial data are DELETED to avoid duplicates.
+ * - Old members with financial data are updated in place.
+ * - New members from Excel are inserted fresh.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -59,12 +60,36 @@ export async function POST(request: NextRequest) {
       defval: null,
     });
 
-    // Step 1: Mark ALL existing members as inactive (they'll be reactivated if in the file)
-    await db
-      .update(users)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(users.role, "member"));
+    // ─── Step 1: Clean up old member data ────────────────────────────────────
+    // Delete employee_data for ALL member-role users
+    await db.execute(sql`
+      DELETE FROM employee_data
+      WHERE user_id IN (SELECT id FROM users WHERE role = 'member')
+    `);
 
+    // Delete member users that have NO references in financial tables
+    // (savings, loans, loan_balances, monthly_deductions, purchase_orders, approvals)
+    // Members WITH financial data are kept and will be updated
+    // Count members before delete
+    const membersBefore = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
+    const beforeCount = membersBefore.length;
+
+    await db.execute(sql`
+      DELETE FROM users
+      WHERE role = 'member'
+        AND id NOT IN (SELECT DISTINCT user_id FROM savings WHERE user_id IS NOT NULL)
+        AND id NOT IN (SELECT DISTINCT user_id FROM loans WHERE user_id IS NOT NULL)
+        AND id NOT IN (SELECT DISTINCT user_id FROM loan_balances WHERE user_id IS NOT NULL)
+        AND id NOT IN (SELECT DISTINCT user_id FROM monthly_deductions WHERE user_id IS NOT NULL)
+        AND id NOT IN (SELECT DISTINCT user_id FROM purchase_orders WHERE user_id IS NOT NULL)
+        AND id NOT IN (SELECT DISTINCT approver_id FROM approvals WHERE approver_id IS NOT NULL)
+        AND id NOT IN (SELECT DISTINCT uploaded_by FROM upload_logs WHERE uploaded_by IS NOT NULL)
+    `);
+
+    const membersAfter = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
+    const deleted = beforeCount - membersAfter.length;
+
+    // ─── Step 2: Process Excel rows ──────────────────────────────────────────
     let created = 0;
     let updated = 0;
     let skipped = 0;
@@ -95,7 +120,6 @@ export async function POST(request: NextRequest) {
         if (nup) {
           memberEmail = `${nup}@kopeg-bki.id`;
         } else {
-          // Use name-based email
           const slug = name
             .toLowerCase()
             .replace(/[^a-z0-9\s]/g, "")
@@ -116,14 +140,14 @@ export async function POST(request: NextRequest) {
       const isActive = status === "AKTIF" || status === "";
 
       try {
-        // Try to find existing user by email
+        // Try to find existing user by email (only survivors with financial data)
         const [existing] = await db
           .select()
           .from(users)
           .where(eq(users.email, memberEmail));
 
         if (existing) {
-          // Update existing user
+          // Update existing user (kept because they have financial data)
           await db
             .update(users)
             .set({
@@ -135,36 +159,16 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(users.id, existing.id));
 
-          // Upsert employee_data
-          const [existingEmpData] = await db
-            .select()
-            .from(employeeData)
-            .where(eq(employeeData.userId, existing.id));
-
-          if (existingEmpData) {
-            await db
-              .update(employeeData)
-              .set({
-                fullName: name,
-                employeeNumber: nup || existingEmpData.employeeNumber,
-                email: memberEmail,
-                department: departemen,
-                position: jabatan,
-                rawData: { perusahaan, unitPenempatan, status },
-                updatedAt: new Date(),
-              })
-              .where(eq(employeeData.id, existingEmpData.id));
-          } else {
-            await db.insert(employeeData).values({
-              userId: existing.id,
-              fullName: name,
-              employeeNumber: nup || null,
-              email: memberEmail,
-              department: departemen,
-              position: jabatan,
-              rawData: { perusahaan, unitPenempatan, status },
-            });
-          }
+          // Create fresh employee_data (old ones were deleted in step 1)
+          await db.insert(employeeData).values({
+            userId: existing.id,
+            fullName: name,
+            employeeNumber: nup || null,
+            email: memberEmail,
+            department: departemen,
+            position: jabatan,
+            rawData: { perusahaan, unitPenempatan, status },
+          });
 
           updated++;
         } else {
@@ -220,6 +224,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      deleted,
       created,
       updated,
       skipped,
