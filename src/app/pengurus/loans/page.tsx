@@ -30,6 +30,7 @@ export default function PengurusLoansPage() {
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [userRole, setUserRole] = useState("");
   const [filter, setFilter] = useState<LoanFilter>("all");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const router = useRouter();
@@ -48,6 +49,13 @@ export default function PengurusLoansPage() {
         user.user_metadata?.full_name || user.email?.split("@")[0] || "Pengurus"
       );
       setUserEmail(user.email || "");
+
+      // Get user role
+      const roleRes = await fetch("/api/approvals?view=all");
+      if (roleRes.ok) {
+        const roleData = await roleRes.json();
+        setUserRole(roleData.userRole || "");
+      }
 
       const res = await fetch("/api/loans?view=all");
       if (res.ok) {
@@ -91,10 +99,10 @@ export default function PengurusLoansPage() {
     }
   }
 
-  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string } | null {
+  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string; requiredRole: string } | null {
     switch (status) {
-      case "spp_process": return { label: "Buat SPP", nextStatus: "", needsInput: "spp" };
-      case "bank_process": return { label: "Dana Dicairkan", nextStatus: "disbursed" };
+      case "spp_process": return { label: "Buat SPP", nextStatus: "", needsInput: "spp", requiredRole: "staf_treasury" };
+      case "bank_process": return { label: "Dana Dicairkan", nextStatus: "disbursed", requiredRole: "staf_treasury" };
       default: return null;
     }
   }
@@ -286,6 +294,9 @@ export default function PengurusLoansPage() {
                         {(() => {
                           const action = getNextAction(loan.status);
                           if (!action) return <span className="text-xs text-gray-300">—</span>;
+                          if (userRole !== action.requiredRole) {
+                            return <span className="text-[10px] text-gray-400 italic">Menunggu {action.requiredRole.replace("staf_", "Staf ")}</span>;
+                          }
                           if (action.needsInput === "spp") {
                             return (
                               <button

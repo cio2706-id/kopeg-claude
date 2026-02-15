@@ -8,8 +8,8 @@ import { z } from "zod";
 
 /**
  * PATCH: Update loan status for post-SPP workflow steps.
- * Allowed transitions (by staf_treasury):
- *   bank_process → disbursed (member receives funds)
+ * Role-restricted transitions:
+ *   bank_process → disbursed (staf_treasury only)
  */
 const statusUpdateSchema = z.object({
   status: z.enum(["bank_process", "disbursed"]),
@@ -17,9 +17,9 @@ const statusUpdateSchema = z.object({
   notes: z.string().optional(),
 });
 
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  spp_process: ["bank_process"],
-  bank_process: ["disbursed"],
+const ALLOWED_TRANSITIONS: Record<string, { nextStatuses: string[]; allowedRoles: string[] }> = {
+  spp_process: { nextStatuses: ["bank_process"], allowedRoles: ["staf_treasury"] },
+  bank_process: { nextStatuses: ["disbursed"], allowedRoles: ["staf_treasury"] },
 };
 
 export async function PATCH(
@@ -49,12 +49,19 @@ export async function PATCH(
       return NextResponse.json({ error: "Pinjaman tidak ditemukan" }, { status: 404 });
     }
 
-    // Check allowed transition
-    const allowed = ALLOWED_TRANSITIONS[loan.status] || [];
-    if (!allowed.includes(parsed.data.status)) {
+    // Check allowed transition and role
+    const transition = ALLOWED_TRANSITIONS[loan.status];
+    if (!transition || !transition.nextStatuses.includes(parsed.data.status)) {
       return NextResponse.json(
         { error: `Tidak dapat mengubah status dari "${loan.status}" ke "${parsed.data.status}"` },
         { status: 400 }
+      );
+    }
+
+    if (!transition.allowedRoles.includes(dbUser.role)) {
+      return NextResponse.json(
+        { error: `Role "${dbUser.role}" tidak berwenang untuk mengubah status ini. Diperlukan: ${transition.allowedRoles.join(", ")}` },
+        { status: 403 }
       );
     }
 

@@ -24,6 +24,7 @@ export default function PengurusPOPage() {
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [userRole, setUserRole] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
@@ -41,6 +42,13 @@ export default function PengurusPOPage() {
         user.user_metadata?.full_name || user.email?.split("@")[0] || "Pengurus"
       );
       setUserEmail(user.email || "");
+
+      // Get user role
+      const roleRes = await fetch("/api/approvals?view=all");
+      if (roleRes.ok) {
+        const roleData = await roleRes.json();
+        setUserRole(roleData.userRole || "");
+      }
 
       const res = await fetch("/api/purchase-orders?view=all");
       if (res.ok) {
@@ -84,17 +92,24 @@ export default function PengurusPOPage() {
     }
   }
 
-  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string } | null {
+  const ROLE_DISPLAY: Record<string, string> = {
+    staf_treasury: "Staf Treasury",
+    staf_pengadaan: "Staf Pengadaan",
+    staf_piutang: "Staf Piutang",
+    staf_akunting: "Staf Akunting",
+  };
+
+  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string; requiredRole: string } | null {
     switch (status) {
-      case "approved_rab": return { label: "Buat SPP", nextStatus: "", needsInput: "spp" };
-      case "spp_process": return { label: "Proses Pengadaan", nextStatus: "procurement" };
-      case "procurement": return { label: "Kirim Barang", nextStatus: "delivery" };
-      case "delivery": return { label: "Barang Diterima", nextStatus: "goods_received" };
-      case "goods_received": return { label: "Diantar ke Client", nextStatus: "goods_delivered" };
-      case "goods_delivered": return { label: "Proses Invoice", nextStatus: "invoicing" };
-      case "invoicing": return { label: "Menunggu Bayar", nextStatus: "waiting_payment" };
-      case "waiting_payment": return { label: "Bayar Diterima", nextStatus: "payment_received" };
-      case "payment_received": return { label: "Selesai", nextStatus: "completed" };
+      case "approved_rab": return { label: "Buat SPP", nextStatus: "", needsInput: "spp", requiredRole: "staf_treasury" };
+      case "spp_process": return { label: "Proses Pengadaan", nextStatus: "procurement", requiredRole: "staf_pengadaan" };
+      case "procurement": return { label: "Kirim Barang", nextStatus: "delivery", requiredRole: "staf_pengadaan" };
+      case "delivery": return { label: "Barang Diterima", nextStatus: "goods_received", requiredRole: "staf_piutang" };
+      case "goods_received": return { label: "Diantar ke Client", nextStatus: "goods_delivered", requiredRole: "staf_piutang" };
+      case "goods_delivered": return { label: "Proses Invoice", nextStatus: "invoicing", requiredRole: "staf_akunting" };
+      case "invoicing": return { label: "Menunggu Bayar", nextStatus: "waiting_payment", requiredRole: "staf_akunting" };
+      case "waiting_payment": return { label: "Bayar Diterima", nextStatus: "payment_received", requiredRole: "staf_treasury" };
+      case "payment_received": return { label: "Selesai", nextStatus: "completed", requiredRole: "staf_akunting" };
       default: return null;
     }
   }
@@ -251,6 +266,9 @@ export default function PengurusPOPage() {
                         {(() => {
                           const action = getNextAction(po.status);
                           if (!action) return <span className="text-xs text-gray-300">—</span>;
+                          if (userRole !== action.requiredRole) {
+                            return <span className="text-[10px] text-gray-400 italic">Menunggu {ROLE_DISPLAY[action.requiredRole] || action.requiredRole}</span>;
+                          }
                           if (action.needsInput === "spp") {
                             return (
                               <button

@@ -35,16 +35,16 @@ const statusUpdateSchema = z.object({
   notes: z.string().optional(),
 });
 
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  approved_rab: ["spp_process"],
-  spp_process: ["procurement"],
-  procurement: ["delivery"],
-  delivery: ["goods_received"],
-  goods_received: ["goods_delivered"],
-  goods_delivered: ["invoicing"],
-  invoicing: ["waiting_payment"],
-  waiting_payment: ["payment_received"],
-  payment_received: ["completed"],
+const ALLOWED_TRANSITIONS: Record<string, { nextStatuses: string[]; allowedRoles: string[] }> = {
+  approved_rab: { nextStatuses: ["spp_process"], allowedRoles: ["staf_treasury"] },
+  spp_process: { nextStatuses: ["procurement"], allowedRoles: ["staf_pengadaan"] },
+  procurement: { nextStatuses: ["delivery"], allowedRoles: ["staf_pengadaan"] },
+  delivery: { nextStatuses: ["goods_received"], allowedRoles: ["staf_piutang"] },
+  goods_received: { nextStatuses: ["goods_delivered"], allowedRoles: ["staf_piutang"] },
+  goods_delivered: { nextStatuses: ["invoicing"], allowedRoles: ["staf_akunting"] },
+  invoicing: { nextStatuses: ["waiting_payment"], allowedRoles: ["staf_akunting"] },
+  waiting_payment: { nextStatuses: ["payment_received"], allowedRoles: ["staf_treasury"] },
+  payment_received: { nextStatuses: ["completed"], allowedRoles: ["staf_akunting"] },
 };
 
 export async function PATCH(
@@ -74,12 +74,19 @@ export async function PATCH(
       return NextResponse.json({ error: "PO tidak ditemukan" }, { status: 404 });
     }
 
-    // Check allowed transition
-    const allowed = ALLOWED_TRANSITIONS[po.status] || [];
-    if (!allowed.includes(parsed.data.status)) {
+    // Check allowed transition and role
+    const transition = ALLOWED_TRANSITIONS[po.status];
+    if (!transition || !transition.nextStatuses.includes(parsed.data.status)) {
       return NextResponse.json(
         { error: `Tidak dapat mengubah status dari "${po.status}" ke "${parsed.data.status}"` },
         { status: 400 }
+      );
+    }
+
+    if (!transition.allowedRoles.includes(dbUser.role)) {
+      return NextResponse.json(
+        { error: `Role "${dbUser.role}" tidak berwenang untuk mengubah status ini. Diperlukan: ${transition.allowedRoles.join(", ")}` },
+        { status: 403 }
       );
     }
 
