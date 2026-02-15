@@ -80,6 +80,14 @@ export const loanTypeEnum = pgEnum("loan_type", [
   "travel",
 ]);
 
+export const sppStatusEnum = pgEnum("spp_status", [
+  "draft",
+  "pending_manager",
+  "pending_bendahara",
+  "approved",
+  "rejected",
+]);
+
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
 export const users = pgTable("users", {
@@ -160,6 +168,7 @@ export const loans = pgTable("loans", {
   coaCode: varchar("coa_code", { length: 20 }),
   bankPortalRef: varchar("bank_portal_ref", { length: 100 }),
   disbursedAt: timestamp("disbursed_at"),
+  sppId: uuid("spp_id").references(() => spp.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -197,6 +206,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   paymentRef: varchar("payment_ref", { length: 100 }),
   accuratePaymentId: varchar("accurate_payment_id", { length: 100 }),
   completedAt: timestamp("completed_at"),
+  sppId: uuid("spp_id").references(() => spp.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -250,7 +260,51 @@ export const approvals = pgTable("approvals", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// ─── Content ────────────────────────────────────────────────────────────────
+// ─── SPP (Surat Permintaan Pembayaran) ─────────────────────────────────────
+
+export const spp = pgTable("spp", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sppNumber: varchar("spp_number", { length: 50 }).unique().notNull(),
+  referenceType: varchar("reference_type", { length: 50 }), // "loan", "purchase_order", or null for standalone
+  referenceId: uuid("reference_id"),
+  unitKerja: varchar("unit_kerja", { length: 255 }).default("KOPERASI PEGAWAI BIRO KLASIFIKASI INDONESIA"),
+  requestDate: timestamp("request_date").defaultNow().notNull(),
+  payableTo: varchar("payable_to", { length: 255 }).notNull(),
+  totalAmount: numeric("total_amount", { precision: 15, scale: 2 }).notNull(),
+  amountInWords: text("amount_in_words"),
+  supportingDocs: text("supporting_docs").default("Terlampir"),
+  // Tax withholding (PPh 23)
+  hasPph23: boolean("has_pph23").default(false),
+  pphDetails: jsonb("pph_details"), // [{description, amount}]
+  totalInvoice: numeric("total_invoice", { precision: 15, scale: 2 }),
+  pphDue: numeric("pph_due", { precision: 15, scale: 2 }),
+  // Status & workflow
+  status: sppStatusEnum("status").default("draft").notNull(),
+  createdBy: uuid("created_by")
+    .references(() => users.id)
+    .notNull(),
+  approvedByTreasury: uuid("approved_by_treasury").references(() => users.id),
+  approvedByTreasuryAt: timestamp("approved_by_treasury_at"),
+  approvedByManager: uuid("approved_by_manager").references(() => users.id),
+  approvedByManagerAt: timestamp("approved_by_manager_at"),
+  approvedByBendahara: uuid("approved_by_bendahara").references(() => users.id),
+  approvedByBendaharaAt: timestamp("approved_by_bendahara_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const sppItems = pgTable("spp_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sppId: uuid("spp_id")
+    .references(() => spp.id)
+    .notNull(),
+  accountCode: varchar("account_code", { length: 20 }).notNull(), // No. Akun / COA
+  description: text("description").notNull(), // Keterangan Pembayaran
+  amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 // ─── Loan Balances (Imported from kertas kerja) ────────────────────────────
 
@@ -332,6 +386,9 @@ export type PaymentRequest = typeof paymentRequests.$inferSelect;
 export type Approval = typeof approvals.$inferSelect;
 export type Promotion = typeof promotions.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type Spp = typeof spp.$inferSelect;
+export type NewSpp = typeof spp.$inferInsert;
+export type SppItem = typeof sppItems.$inferSelect;
 export type LoanBalance = typeof loanBalances.$inferSelect;
 export type MonthlyDeduction = typeof monthlyDeductions.$inferSelect;
 export type UploadLog = typeof uploadLogs.$inferSelect;

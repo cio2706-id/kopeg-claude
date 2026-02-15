@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatCurrency, PO_STATUS_LABELS } from "@/lib/utils";
-import { ShoppingCart, Package, CheckCircle2, Clock } from "lucide-react";
+import { ShoppingCart, Package, CheckCircle2, Clock, Loader2, ArrowRight, FileText } from "lucide-react";
 
 interface PurchaseOrder {
   id: string;
@@ -24,6 +24,7 @@ export default function PengurusPOPage() {
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -60,6 +61,42 @@ export default function PengurusPOPage() {
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/pengurus/login");
+  }
+
+  async function updatePOStatus(poId: string, newStatus: string) {
+    setUpdatingId(poId);
+    try {
+      const res = await fetch(`/api/po/${poId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Gagal mengupdate status");
+      }
+    } catch {
+      alert("Gagal mengupdate status");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string } | null {
+    switch (status) {
+      case "approved_rab": return { label: "Buat SPP", nextStatus: "", needsInput: "spp" };
+      case "spp_process": return { label: "Proses Pengadaan", nextStatus: "procurement" };
+      case "procurement": return { label: "Kirim Barang", nextStatus: "delivery" };
+      case "delivery": return { label: "Barang Diterima", nextStatus: "goods_received" };
+      case "goods_received": return { label: "Diantar ke Client", nextStatus: "goods_delivered" };
+      case "goods_delivered": return { label: "Proses Invoice", nextStatus: "invoicing" };
+      case "invoicing": return { label: "Menunggu Bayar", nextStatus: "waiting_payment" };
+      case "waiting_payment": return { label: "Bayar Diterima", nextStatus: "payment_received" };
+      case "payment_received": return { label: "Selesai", nextStatus: "completed" };
+      default: return null;
+    }
   }
 
   function getStatusBadgeClasses(status: string): string {
@@ -171,6 +208,7 @@ export default function PengurusPOPage() {
                     <th className="pb-3 font-medium text-center">Status</th>
                     <th className="pb-3 font-medium text-right">Jumlah</th>
                     <th className="pb-3 font-medium">Tanggal</th>
+                    <th className="pb-3 font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -208,6 +246,36 @@ export default function PengurusPOPage() {
                           month: "short",
                           year: "numeric",
                         })}
+                      </td>
+                      <td className="py-3.5">
+                        {(() => {
+                          const action = getNextAction(po.status);
+                          if (!action) return <span className="text-xs text-gray-300">—</span>;
+                          if (action.needsInput === "spp") {
+                            return (
+                              <button
+                                onClick={() => router.push(`/pengurus/spp/create?type=purchase_order&ref=${po.id}`)}
+                                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 font-medium transition"
+                              >
+                                <FileText className="w-3 h-3" /> Buat SPP
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              onClick={() => updatePOStatus(po.id, action.nextStatus)}
+                              disabled={updatingId === po.id}
+                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 font-medium transition disabled:opacity-50"
+                            >
+                              {updatingId === po.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <ArrowRight className="w-3 h-3" />
+                              )}
+                              {action.label}
+                            </button>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}

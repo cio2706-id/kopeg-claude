@@ -9,7 +9,7 @@ import {
   LOAN_TYPE_LABELS,
   LOAN_STATUS_LABELS,
 } from "@/lib/utils";
-import { CreditCard, Wallet, TrendingUp, FileText } from "lucide-react";
+import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight } from "lucide-react";
 
 interface Loan {
   id: string;
@@ -31,6 +31,7 @@ export default function PengurusLoansPage() {
   const [loading, setLoading] = useState(true);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [filter, setFilter] = useState<LoanFilter>("all");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -67,6 +68,35 @@ export default function PengurusLoansPage() {
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/pengurus/login");
+  }
+
+  async function updateLoanStatus(loanId: string, newStatus: string, extra?: Record<string, string>) {
+    setUpdatingId(loanId);
+    try {
+      const res = await fetch(`/api/loans/${loanId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus, ...extra }),
+      });
+      if (res.ok) {
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Gagal mengupdate status");
+      }
+    } catch {
+      alert("Gagal mengupdate status");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string } | null {
+    switch (status) {
+      case "spp_process": return { label: "Buat SPP", nextStatus: "", needsInput: "spp" };
+      case "bank_process": return { label: "Dana Dicairkan", nextStatus: "disbursed" };
+      default: return null;
+    }
   }
 
   function getStatusBadgeClasses(status: string): string {
@@ -213,6 +243,7 @@ export default function PengurusLoansPage() {
                     <th className="pb-3 font-medium text-center">Tenor</th>
                     <th className="pb-3 font-medium text-center">Status</th>
                     <th className="pb-3 font-medium">Tanggal</th>
+                    <th className="pb-3 font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,6 +281,36 @@ export default function PengurusLoansPage() {
                           month: "short",
                           year: "numeric",
                         })}
+                      </td>
+                      <td className="py-3.5">
+                        {(() => {
+                          const action = getNextAction(loan.status);
+                          if (!action) return <span className="text-xs text-gray-300">—</span>;
+                          if (action.needsInput === "spp") {
+                            return (
+                              <button
+                                onClick={() => router.push(`/pengurus/spp/create?type=loan&ref=${loan.id}`)}
+                                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 font-medium transition"
+                              >
+                                <FileText className="w-3 h-3" /> Buat SPP
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              onClick={() => updateLoanStatus(loan.id, action.nextStatus)}
+                              disabled={updatingId === loan.id}
+                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 font-medium transition disabled:opacity-50"
+                            >
+                              {updatingId === loan.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <ArrowRight className="w-3 h-3" />
+                              )}
+                              {action.label}
+                            </button>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
