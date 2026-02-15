@@ -9,12 +9,13 @@ import { z } from "zod";
 import { LOAN_COA_MAP } from "@/lib/accurate";
 
 const loanSchema = z.object({
-  loanType: z.enum(["reguler", "khusus", "barang", "travel"]),
+  loanType: z.enum(["reguler", "khusus", "barang", "travel", "channeling"]),
   amount: z.number().positive(),
   tenorMonths: z.number().int().min(1).max(60),
   purpose: z.string().optional(),
   interestRate: z.number().min(0).max(100).optional(),
   documentUrls: z.array(z.string()).optional(),
+  formData: z.record(z.string(), z.unknown()).optional(),
 });
 
 const INTEREST_RATES: Record<string, number> = {
@@ -22,6 +23,7 @@ const INTEREST_RATES: Record<string, number> = {
   khusus: 10,
   barang: 8,
   travel: 10,
+  channeling: 0,
 };
 
 export async function POST(request: NextRequest) {
@@ -47,16 +49,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const isChanneling = parsed.data.loanType === "channeling";
+
     const interestRate =
       parsed.data.interestRate ?? INTEREST_RATES[parsed.data.loanType];
-    const monthlyInstallment = calculateMonthlyInstallment(
-      parsed.data.amount,
-      interestRate,
-      parsed.data.tenorMonths
-    );
+    const monthlyInstallment = isChanneling
+      ? 0
+      : calculateMonthlyInstallment(
+          parsed.data.amount,
+          interestRate,
+          parsed.data.tenorMonths
+        );
 
     const trackingNumber = generateTrackingNumber("LN");
-    const coaCode = LOAN_COA_MAP[parsed.data.loanType];
+    const coaCode = LOAN_COA_MAP[parsed.data.loanType] || null;
 
     const [loan] = await db
       .insert(loans)
@@ -69,24 +75,27 @@ export async function POST(request: NextRequest) {
         tenorMonths: parsed.data.tenorMonths,
         monthlyInstallment: Math.round(monthlyInstallment).toString(),
         purpose: parsed.data.purpose,
+        formData: parsed.data.formData || null,
         documentUrls: parsed.data.documentUrls || null,
-        status: "pending_treasury",
+        status: isChanneling ? "on_review" : "pending_treasury",
         coaCode,
       })
       .returning();
 
-    // Create approval chain per PDF: Staf Treasury → Manager → Bendahara → Ketua
-    await db.insert(approvals).values(
-      LOAN_APPROVAL_STEPS.map((step) => ({
-        referenceType: "loan",
-        referenceId: loan.id,
-        approverRole: step.role,
-        stepOrder: step.order,
-        stepLabel: step.label,
-      }))
-    );
+    // Only create approval chain for non-channeling loans
+    if (!isChanneling) {
+      await db.insert(approvals).values(
+        LOAN_APPROVAL_STEPS.map((step) => ({
+          referenceType: "loan",
+          referenceId: loan.id,
+          approverRole: step.role,
+          stepOrder: step.order,
+          stepLabel: step.label,
+        }))
+      );
+    }
 
-    return NextResponse.json({ loan, trackingNumber });
+    return NextResponse.json({ loan, trackingNumber, isChanneling });
   } catch (error) {
     console.error("Failed to create loan:", error);
     const message =

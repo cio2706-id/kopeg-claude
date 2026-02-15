@@ -12,59 +12,142 @@ import {
   Sparkles,
   Info,
   Package,
-  Plane,
   Star,
   Upload,
+  Phone,
+  ArrowLeft,
+  Landmark,
 } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
-import { formatCurrency, calculateMonthlyInstallment, LOAN_TYPE_LABELS } from "@/lib/utils";
+import { formatCurrency, calculateMonthlyInstallment } from "@/lib/utils";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type LoanType = "reguler" | "khusus" | "barang" | "channeling";
 
 interface LoanTypeConfig {
   label: string;
+  description: string;
   coa: string;
   rate: number;
+  maxAmount?: number;
+  maxTenor?: number;
   icon: React.ReactNode;
   colors: { bg: string; border: string; text: string; icon: string };
 }
 
-const LOAN_TYPES: Record<string, LoanTypeConfig> = {
+const LOAN_TYPES: Record<LoanType, LoanTypeConfig> = {
   reguler: {
     label: "Pinjaman Reguler",
+    description: "Maks Rp 25 juta, tenor 10 bulan",
     coa: "110304",
     rate: 12,
+    maxAmount: 25000000,
+    maxTenor: 10,
     icon: <CreditCard className="w-6 h-6" />,
     colors: { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-700", icon: "text-teal-600" },
   },
   khusus: {
     label: "Pinjaman Khusus",
+    description: "Maks Rp 100 juta, tenor 60 bulan",
     coa: "110305",
-    rate: 10,
+    rate: 7.5,
+    maxAmount: 100000000,
+    maxTenor: 60,
     icon: <Star className="w-6 h-6" />,
     colors: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "text-amber-600" },
   },
   barang: {
     label: "Pinjaman Barang",
+    description: "Pinjaman untuk pembelian barang",
     coa: "110306",
     rate: 8,
     icon: <Package className="w-6 h-6" />,
     colors: { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", icon: "text-purple-600" },
   },
-  travel: {
-    label: "Pinjaman Travel",
-    coa: "110307",
-    rate: 10,
-    icon: <Plane className="w-6 h-6" />,
+  channeling: {
+    label: "Pinjaman Channeling",
+    description: "Melalui Bank Mandiri & BSI",
+    coa: "",
+    rate: 0,
+    icon: <Landmark className="w-6 h-6" />,
     colors: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", icon: "text-sky-600" },
   },
 };
 
+// ─── Reguler Criteria ────────────────────────────────────────────────────────
+
+const LOAN_CRITERIA = [
+  { value: "pendidikan", label: "Pendidikan", rate: "0.25%" },
+  { value: "perumahan", label: "Perumahan", rate: "0.25%" },
+  { value: "musibah", label: "Musibah", rate: "0.25%" },
+];
+
+const MUSIBAH_TYPES = [
+  { value: "kecelakaan", label: "Kecelakaan" },
+  { value: "kematian", label: "Kematian" },
+  { value: "kebanjiran", label: "Kebanjiran" },
+  { value: "kebakaran", label: "Kebakaran" },
+];
+
+// ─── Tenor options by type ───────────────────────────────────────────────────
+
+function getTenorOptions(type: LoanType): number[] {
+  const config = LOAN_TYPES[type];
+  const max = config.maxTenor || 60;
+  const options = [3, 6, 10, 12, 18, 24, 36, 48, 60];
+  return options.filter((t) => t <= max);
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export default function LoanApplicationPage() {
-  const [loanType, setLoanType] = useState("");
+  const [step, setStep] = useState<"select" | "form" | "success" | "channeling">("select");
+  const [loanType, setLoanType] = useState<LoanType | "">("");
+
+  // Common fields
   const [amount, setAmount] = useState("");
   const [tenor, setTenor] = useState("");
   const [purpose, setPurpose] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+
+  // Reguler-specific
+  const [loanCriteria, setLoanCriteria] = useState("");
+  const [musibahType, setMusibahType] = useState("");
+  const [requestMonth, setRequestMonth] = useState("");
+  const [previousBalance, setPreviousBalance] = useState("");
+
+  // Khusus-specific
+  const [tempatTanggalLahir, setTempatTanggalLahir] = useState("");
+  const [nomorKtp, setNomorKtp] = useState("");
+  const [alamat, setAlamat] = useState("");
+  const [telepon, setTelepon] = useState("");
+  const [namaIbuKandung, setNamaIbuKandung] = useState("");
+  const [jabatan, setJabatan] = useState("");
+  const [unitKerja, setUnitKerja] = useState("");
+  const [telpExt, setTelpExt] = useState("");
+  const [mulaiKerjaSejak, setMulaiKerjaSejak] = useState("");
+  const [namaAtasan, setNamaAtasan] = useState("");
+  const [penghasilanBruto, setPenghasilanBruto] = useState("");
+  const [namaBank, setNamaBank] = useState("");
+  const [nomorRekening, setNomorRekening] = useState("");
+  const [jenisAgunan, setJenisAgunan] = useState("");
+
+  // Barang-specific
+  const [barangUnitKerja, setBarangUnitKerja] = useState("");
+  const [statusKepegawaian, setStatusKepegawaian] = useState("");
+  const [jenisKebutuhan, setJenisKebutuhan] = useState("");
+  const [merek, setMerek] = useState("");
+  const [tipe, setTipe] = useState("");
+  const [lainLain, setLainLain] = useState("");
+  const [barangPreviousBalance, setBarangPreviousBalance] = useState("");
+
+  // Channeling-specific
+  const [channelingAmount, setChannelingAmount] = useState("");
+  const [channelingPurpose, setChannelingPurpose] = useState("");
+
+  // State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trackingNumber, setTrackingNumber] = useState<string | null>(null);
@@ -94,13 +177,61 @@ export default function LoanApplicationPage() {
     router.push("/member/login");
   }
 
-  const selectedLoan = loanType ? LOAN_TYPES[loanType] : null;
-  const interestRate = selectedLoan ? selectedLoan.rate : 0;
-  const monthlyInstallment =
-    amount && tenor && loanType
-      ? calculateMonthlyInstallment(parseFloat(amount), interestRate, parseInt(tenor))
-      : 0;
-  const totalRepayment = monthlyInstallment * (parseInt(tenor) || 0);
+  // ─── Select loan type ───────────────────────────────────────────────────────
+
+  function handleSelectType(type: LoanType) {
+    setLoanType(type);
+    if (type === "channeling") {
+      setStep("channeling");
+    } else {
+      setStep("form");
+    }
+  }
+
+  // ─── Build formData based on type ──────────────────────────────────────────
+
+  function buildFormData(): Record<string, unknown> {
+    if (loanType === "reguler") {
+      return {
+        loanCriteria,
+        musibahType: loanCriteria === "musibah" ? musibahType : undefined,
+        requestMonth,
+        previousLoanBalance: previousBalance ? parseFloat(previousBalance) : 0,
+      };
+    }
+    if (loanType === "khusus") {
+      return {
+        tempatTanggalLahir,
+        nomorKtp,
+        alamat,
+        telepon,
+        namaIbuKandung,
+        jabatan,
+        unitKerja,
+        telpExt,
+        mulaiKerjaSejak,
+        namaAtasan,
+        penghasilanBruto: penghasilanBruto ? parseFloat(penghasilanBruto) : 0,
+        namaBank,
+        nomorRekening,
+        jenisAgunan,
+      };
+    }
+    if (loanType === "barang") {
+      return {
+        unitKerja: barangUnitKerja,
+        statusKepegawaian,
+        jenisKebutuhan,
+        merek,
+        tipe,
+        lainLain,
+        previousLoanBalance: barangPreviousBalance ? parseFloat(barangPreviousBalance) : 0,
+      };
+    }
+    return {};
+  }
+
+  // ─── Submit handlers ───────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -108,7 +239,6 @@ export default function LoanApplicationPage() {
     setError(null);
 
     try {
-      // Upload document if provided
       let documentUrls: string[] = [];
       if (documentFile) {
         const formData = new FormData();
@@ -121,6 +251,7 @@ export default function LoanApplicationPage() {
         }
       }
 
+      const config = LOAN_TYPES[loanType as LoanType];
       const res = await fetch("/api/loans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,7 +260,8 @@ export default function LoanApplicationPage() {
           amount: parseFloat(amount),
           tenorMonths: parseInt(tenor),
           purpose,
-          interestRate,
+          interestRate: config.rate,
+          formData: buildFormData(),
           documentUrls: documentUrls.length > 0 ? documentUrls : undefined,
         }),
       });
@@ -141,12 +273,62 @@ export default function LoanApplicationPage() {
 
       const data = await res.json();
       setTrackingNumber(data.trackingNumber);
+      setStep("success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
     } finally {
       setLoading(false);
     }
   }
+
+  async function handleChannelingSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loanType: "channeling",
+          amount: channelingAmount ? parseFloat(channelingAmount) : 1,
+          tenorMonths: 1,
+          purpose: channelingPurpose || "Pinjaman Channeling (Mandiri & BSI)",
+          interestRate: 0,
+          formData: {
+            channelingAmount: channelingAmount ? parseFloat(channelingAmount) : undefined,
+            channelingPurpose,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Gagal menyimpan data");
+      }
+
+      const data = await res.json();
+      setTrackingNumber(data.trackingNumber);
+      setStep("success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ─── Calculated values ─────────────────────────────────────────────────────
+
+  const selectedLoan = loanType ? LOAN_TYPES[loanType as LoanType] : null;
+  const interestRate = selectedLoan ? selectedLoan.rate : 0;
+  const monthlyInstallment =
+    amount && tenor && loanType && loanType !== "channeling"
+      ? calculateMonthlyInstallment(parseFloat(amount), interestRate, parseInt(tenor))
+      : 0;
+  const totalRepayment = monthlyInstallment * (parseInt(tenor) || 0);
+
+  // ─── Loading ───────────────────────────────────────────────────────────────
 
   if (authLoading) {
     return (
@@ -156,7 +338,11 @@ export default function LoanApplicationPage() {
     );
   }
 
-  if (trackingNumber) {
+  // ─── Success Screen ────────────────────────────────────────────────────────
+
+  if (step === "success") {
+    const isChannelingSuccess = loanType === "channeling";
+
     return (
       <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
         <div className="max-w-lg mx-auto py-8">
@@ -164,38 +350,60 @@ export default function LoanApplicationPage() {
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Pengajuan Berhasil!</h2>
-            <p className="text-sm text-gray-500 mb-6">Pengajuan pinjaman Anda telah diterima dan sedang diproses.</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {isChannelingSuccess ? "Data Tersimpan!" : "Pengajuan Berhasil!"}
+            </h2>
+            <p className="text-sm text-gray-500 mb-6">
+              {isChannelingSuccess
+                ? "Data pinjaman channeling Anda telah tersimpan."
+                : "Pengajuan pinjaman Anda telah diterima dan sedang diproses."}
+            </p>
 
-            <div className="bg-[#f0f0f0] rounded-2xl p-5 mb-6">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Nomor Tracking</p>
-              <p className="text-xl font-mono font-bold text-teal-600">{trackingNumber}</p>
-            </div>
-
-            <div className="bg-gray-50 rounded-2xl p-5 mb-8 text-left">
-              <p className="text-sm font-semibold text-gray-900 mb-3">Alur Persetujuan:</p>
-              <div className="space-y-3">
-                {[
-                  "Staf Treasury (Review & Analisa Kredit)",
-                  "Manager (Review & Evaluasi Keuangan)",
-                  "Bendahara (Review & Evaluasi Keuangan)",
-                  "Ketua (Persetujuan Akhir)",
-                ].map((step, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold shrink-0">
-                      {i + 1}
-                    </div>
-                    <p className="text-sm text-gray-600">{step}</p>
-                  </div>
-                ))}
+            {trackingNumber && (
+              <div className="bg-[#f0f0f0] rounded-2xl p-5 mb-6">
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Nomor Tracking</p>
+                <p className="text-xl font-mono font-bold text-teal-600">{trackingNumber}</p>
               </div>
-            </div>
+            )}
+
+            {isChannelingSuccess ? (
+              <div className="bg-sky-50 border border-sky-200 rounded-2xl p-6 mb-8 text-left">
+                <div className="flex items-center gap-3 mb-3">
+                  <Phone className="w-5 h-5 text-sky-600" />
+                  <p className="text-sm font-semibold text-sky-900">Hubungi Tim Koperasi</p>
+                </div>
+                <p className="text-sm text-sky-800">
+                  Untuk melanjutkan proses pinjaman channeling, silakan hubungi Tim Koperasi Pegawai BKI di nomor:
+                </p>
+                <p className="text-2xl font-bold text-sky-700 mt-3">08111111111</p>
+                <p className="text-xs text-sky-600 mt-2">* Nomor ini akan diperbarui</p>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-2xl p-5 mb-8 text-left">
+                <p className="text-sm font-semibold text-gray-900 mb-3">Alur Persetujuan:</p>
+                <div className="space-y-3">
+                  {[
+                    "Staf Treasury (Review & Analisa Kredit)",
+                    "Manager (Review & Evaluasi Keuangan)",
+                    "Bendahara (Review & Evaluasi Keuangan)",
+                    "Ketua (Persetujuan Akhir)",
+                  ].map((s, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold shrink-0">
+                        {i + 1}
+                      </div>
+                      <p className="text-sm text-gray-600">{s}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Link
-              href="/member/dashboard"
+              href="/member/loans"
               className="inline-flex items-center gap-2 bg-teal-500 text-white px-8 py-3 rounded-xl font-semibold hover:bg-teal-600 transition-all shadow-lg shadow-teal-200"
             >
-              Kembali ke Dashboard
+              Lihat Pinjaman Saya
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -204,85 +412,205 @@ export default function LoanApplicationPage() {
     );
   }
 
+  // ─── Channeling Form ───────────────────────────────────────────────────────
+
+  if (step === "channeling") {
+    return (
+      <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
+        <div className="max-w-2xl mx-auto">
+          <button
+            onClick={() => { setStep("select"); setLoanType(""); }}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4"
+          >
+            <ArrowLeft className="w-4 h-4" /> Kembali pilih jenis pinjaman
+          </button>
+
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-11 h-11 rounded-xl bg-sky-100 flex items-center justify-center">
+              <Landmark className="w-5 h-5 text-sky-600" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Pinjaman Channeling</h1>
+              <p className="text-sm text-gray-500">Melalui Bank Mandiri & BSI</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleChannelingSubmit} className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Perkiraan Jumlah Pinjaman (Rp) - Opsional</label>
+                <input
+                  type="number"
+                  value={channelingAmount}
+                  onChange={(e) => setChannelingAmount(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none"
+                  placeholder="Masukkan perkiraan jumlah"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tujuan Pinjaman - Opsional</label>
+                <textarea
+                  value={channelingPurpose}
+                  onChange={(e) => setChannelingPurpose(e.target.value)}
+                  rows={3}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none resize-none"
+                  placeholder="Jelaskan tujuan pinjaman..."
+                />
+              </div>
+            </div>
+
+            <div className="bg-sky-50 border border-sky-200 rounded-2xl p-5">
+              <div className="flex gap-3">
+                <Phone className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-sky-900 mb-1">Informasi Penting</p>
+                  <p className="text-sm text-sky-800">
+                    Setelah menyimpan data, silakan hubungi Tim Koperasi Pegawai BKI untuk melanjutkan proses pinjaman channeling.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-100 rounded-2xl px-5 py-4">
+                <p className="text-red-600 text-sm">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-sky-500 text-white py-3.5 rounded-xl font-semibold hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-sky-200"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Simpan & Lanjutkan
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // ─── Type Selection ────────────────────────────────────────────────────────
+
+  if (step === "select") {
+    return (
+      <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-11 h-11 rounded-xl bg-teal-100 flex items-center justify-center">
+              <FileText className="w-5 h-5 text-teal-600" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Pengajuan Pinjaman</h1>
+              <p className="text-sm text-gray-500">Pilih jenis pinjaman yang sesuai</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {(Object.entries(LOAN_TYPES) as [LoanType, LoanTypeConfig][]).map(([key, config]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleSelectType(key)}
+                className={`p-6 rounded-2xl text-left transition-all border-2 border-gray-100 hover:${config.colors.border} hover:${config.colors.bg} group`}
+              >
+                <div className={`mb-3 text-gray-400 group-hover:${config.colors.icon}`}>
+                  {config.icon}
+                </div>
+                <p className={`font-semibold text-gray-900 group-hover:${config.colors.text}`}>
+                  {config.label}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">{config.description}</p>
+                {config.rate > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">Bunga {config.rate}% / tahun</p>
+                )}
+                <div className="mt-3 flex items-center gap-1 text-xs text-teal-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                  Pilih <ArrowRight className="w-3 h-3" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // ─── Form (Reguler / Khusus / Barang) ──────────────────────────────────────
+
+  const config = LOAN_TYPES[loanType as LoanType];
+
   return (
     <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
       <div className="max-w-3xl mx-auto">
-        {/* Page Header */}
+        <button
+          onClick={() => { setStep("select"); setLoanType(""); }}
+          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" /> Kembali pilih jenis pinjaman
+        </button>
+
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl bg-teal-100 flex items-center justify-center">
-            <FileText className="w-5 h-5 text-teal-600" />
+          <div className={`w-11 h-11 rounded-xl ${config.colors.bg} flex items-center justify-center`}>
+            <span className={config.colors.icon}>{config.icon}</span>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Pengajuan Pinjaman</h1>
-            <p className="text-sm text-gray-500">Pilih jenis pinjaman dan isi detail pengajuan</p>
+            <h1 className="text-xl font-bold text-gray-900">{config.label}</h1>
+            <p className="text-sm text-gray-500">{config.description}</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Loan Type Selection */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-4">Jenis Pinjaman</h2>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.entries(LOAN_TYPES).map(([key, config]) => {
-                const isSelected = loanType === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setLoanType(key)}
-                    className={`p-4 rounded-2xl text-left transition-all border-2 ${
-                      isSelected
-                        ? `${config.colors.bg} ${config.colors.border} ring-1 ring-offset-1 ${config.colors.border}`
-                        : "border-gray-100 hover:border-gray-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    <div className={`mb-2 ${isSelected ? config.colors.icon : "text-gray-400"}`}>
-                      {config.icon}
-                    </div>
-                    <p className={`font-semibold text-sm ${isSelected ? config.colors.text : "text-gray-900"}`}>
-                      {config.label}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">Bunga {config.rate}% / tahun</p>
-                    <p className="text-xs text-gray-400 mt-0.5 font-mono">COA: {config.coa}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Amount & Tenor */}
+          {/* ── Common: Amount & Tenor ──────────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Pinjaman (Rp)</label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-                min="100000"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
-                placeholder="Masukkan jumlah pinjaman"
-              />
+            <h2 className="font-semibold text-gray-900">Data Pinjaman</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Pinjaman (Rp) *</label>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  required
+                  min="100000"
+                  max={config.maxAmount || undefined}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                  placeholder={config.maxAmount ? `Maks ${formatCurrency(config.maxAmount)}` : "Masukkan jumlah"}
+                />
+                {config.maxAmount && (
+                  <p className="text-xs text-gray-400 mt-1">Maks: {formatCurrency(config.maxAmount)}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tenor (bulan) *</label>
+                <select
+                  value={tenor}
+                  onChange={(e) => setTenor(e.target.value)}
+                  required
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                >
+                  <option value="">Pilih tenor</option>
+                  {getTenorOptions(loanType as LoanType).map((t) => (
+                    <option key={t} value={t}>{t} bulan</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tenor (bulan)</label>
-              <select
-                value={tenor}
-                onChange={(e) => setTenor(e.target.value)}
-                required
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
-              >
-                <option value="">Pilih tenor</option>
-                {[6, 12, 18, 24, 36, 48, 60].map((t) => (
-                  <option key={t} value={t}>{t} bulan</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tujuan Pinjaman</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Tujuan Pinjaman *</label>
               <textarea
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value)}
+                required
                 rows={3}
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none resize-none"
                 placeholder="Jelaskan tujuan pinjaman..."
@@ -290,11 +618,374 @@ export default function LoanApplicationPage() {
             </div>
           </div>
 
-          {/* Simulation */}
+          {/* ── Reguler-specific fields ─────────────────────────────────────── */}
+          {loanType === "reguler" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+              <h2 className="font-semibold text-gray-900">Kriteria Pinjaman Reguler</h2>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Kriteria Pinjaman *</label>
+                <div className="space-y-2">
+                  {LOAN_CRITERIA.map((c) => (
+                    <label key={c.value} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${loanCriteria === c.value ? "border-teal-300 bg-teal-50" : "border-gray-200 hover:bg-gray-50"}`}>
+                      <input
+                        type="radio"
+                        name="loanCriteria"
+                        value={c.value}
+                        checked={loanCriteria === c.value}
+                        onChange={(e) => setLoanCriteria(e.target.value)}
+                        className="text-teal-500 focus:ring-teal-500"
+                      />
+                      <span className="text-sm text-gray-900">{c.label}</span>
+                      <span className="text-xs text-gray-500 ml-auto">Bunga {c.rate}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {loanCriteria === "musibah" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Musibah *</label>
+                  <select
+                    value={musibahType}
+                    onChange={(e) => setMusibahType(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                  >
+                    <option value="">Pilih jenis musibah</option>
+                    {MUSIBAH_TYPES.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Dalam Bulan</label>
+                  <input
+                    type="month"
+                    value={requestMonth}
+                    onChange={(e) => setRequestMonth(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Sisa Pinjaman yang Lalu (Rp)</label>
+                  <input
+                    type="number"
+                    value={previousBalance}
+                    onChange={(e) => setPreviousBalance(e.target.value)}
+                    min="0"
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              {/* Syarat & Ketentuan */}
+              <div className="rounded-xl bg-teal-50 border border-teal-200 p-4 text-sm text-teal-800">
+                <p className="font-medium mb-2">Syarat & Ketentuan Pinjaman Reguler:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Plafon maks: Rp 25.000.000</li>
+                  <li>Tenor maks: 10 bulan</li>
+                  <li>Biaya administrasi: 1% dari pinjaman</li>
+                  <li>Simpanan Khusus: 1% dari pinjaman</li>
+                  <li>Dokumen: Fotokopi KTP, slip gaji terbaru, bukti alasan meminjam</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* ── Khusus-specific fields ──────────────────────────────────────── */}
+          {loanType === "khusus" && (
+            <>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+                <h2 className="font-semibold text-gray-900">Data Pribadi Pemohon</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tempat & Tanggal Lahir *</label>
+                    <input
+                      type="text"
+                      value={tempatTanggalLahir}
+                      onChange={(e) => setTempatTanggalLahir(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="Jakarta, 01-01-1990"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nomor KTP *</label>
+                    <input
+                      type="text"
+                      value={nomorKtp}
+                      onChange={(e) => setNomorKtp(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="Copy KTP terlampir"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Alamat Rumah / Kode Pos *</label>
+                    <input
+                      type="text"
+                      value={alamat}
+                      onChange={(e) => setAlamat(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="Alamat lengkap"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Telepon / Handphone *</label>
+                    <input
+                      type="text"
+                      value={telepon}
+                      onChange={(e) => setTelepon(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="08xxxxxxxxxx"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nama Ibu Kandung *</label>
+                    <input
+                      type="text"
+                      value={namaIbuKandung}
+                      onChange={(e) => setNamaIbuKandung(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="Copy KK terlampir"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+                <h2 className="font-semibold text-gray-900">Data Pekerjaan</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Jabatan Saat Ini *</label>
+                    <input
+                      type="text"
+                      value={jabatan}
+                      onChange={(e) => setJabatan(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Unit Kerja / Produksi *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={unitKerja}
+                        onChange={(e) => setUnitKerja(e.target.value)}
+                        required
+                        className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={telpExt}
+                        onChange={(e) => setTelpExt(e.target.value)}
+                        className="w-24 border border-gray-200 rounded-xl px-3 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                        placeholder="Ext."
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Mulai Kerja Sejak *</label>
+                    <input
+                      type="date"
+                      value={mulaiKerjaSejak}
+                      onChange={(e) => setMulaiKerjaSejak(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nama Atasan Langsung *</label>
+                    <input
+                      type="text"
+                      value={namaAtasan}
+                      onChange={(e) => setNamaAtasan(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+                <h2 className="font-semibold text-gray-900">Data Keuangan</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Penghasilan Bruto / Bulan (Rp) *</label>
+                    <input
+                      type="number"
+                      value={penghasilanBruto}
+                      onChange={(e) => setPenghasilanBruto(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="Contoh: 15000000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nama Bank *</label>
+                    <input
+                      type="text"
+                      value={namaBank}
+                      onChange={(e) => setNamaBank(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Nomor Rekening *</label>
+                    <input
+                      type="text"
+                      value={nomorRekening}
+                      onChange={(e) => setNomorRekening(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Agunan (&gt; Rp 50 Juta)</label>
+                    <input
+                      type="text"
+                      value={jenisAgunan}
+                      onChange={(e) => setJenisAgunan(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
+                      placeholder="BPKB / SHM / SHGB (opsional)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Syarat & Ketentuan */}
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                <p className="font-medium mb-2">Syarat & Ketentuan Pinjaman Khusus:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Harus Pegawai Tetap PT BKI</li>
+                  <li>Plafon maks: Rp 100.000.000</li>
+                  <li>Tenor maks: 60 bulan (5 tahun)</li>
+                  <li>Bunga: 7.5% per tahun (flat)</li>
+                  <li>Asuransi wajib jika &gt; Rp 25 juta</li>
+                  <li>Agunan wajib jika &gt; Rp 50 juta (BPKB/SHM/SHGB)</li>
+                  <li>Angsuran min 40% dari gaji</li>
+                  <li>Dokumen: KTP, KK, slip gaji, bukti alasan meminjam</li>
+                </ul>
+              </div>
+
+              {/* Declarations */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 className="font-semibold text-gray-900 mb-3">Pernyataan Pemohon</h2>
+                <div className="space-y-2 text-xs text-gray-600">
+                  <p>1. Seluruh informasi yang saya berikan adalah benar dan saya mengotorisasi Koperasi untuk melakukan verifikasi.</p>
+                  <p>2. Saya menyetujui pemotongan gaji untuk angsuran dan mengotorisasi PT BKI untuk memproses.</p>
+                  <p>3. Apabila keanggotaan atau kepegawaian berakhir, sisa pinjaman akan dipotong dari pesangon/pensiun.</p>
+                  <p>4. Saya setuju mematuhi seluruh prosedur Koperasi; Koperasi dapat menyetujui/menolak tanpa penjelasan.</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Barang-specific fields ──────────────────────────────────────── */}
+          {loanType === "barang" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+              <h2 className="font-semibold text-gray-900">Data Pinjaman Barang</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Unit Kerja *</label>
+                  <input
+                    type="text"
+                    value={barangUnitKerja}
+                    onChange={(e) => setBarangUnitKerja(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status Kepegawaian *</label>
+                  <select
+                    value={statusKepegawaian}
+                    onChange={(e) => setStatusKepegawaian(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                  >
+                    <option value="">Pilih status</option>
+                    <option value="Pegawai Tetap">Pegawai Tetap</option>
+                    <option value="Pegawai Kontrak">Pegawai Kontrak</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Kebutuhan *</label>
+                  <input
+                    type="text"
+                    value={jenisKebutuhan}
+                    onChange={(e) => setJenisKebutuhan(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="Laptop, Handphone, dll"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Merek *</label>
+                  <input
+                    type="text"
+                    value={merek}
+                    onChange={(e) => setMerek(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="Apple, Lenovo, dll"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tipe / Model *</label>
+                  <input
+                    type="text"
+                    value={tipe}
+                    onChange={(e) => setTipe(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="Model / seri"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Sisa Pinjaman Lalu (Rp)</label>
+                  <input
+                    type="number"
+                    value={barangPreviousBalance}
+                    onChange={(e) => setBarangPreviousBalance(e.target.value)}
+                    min="0"
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Lain-lain</label>
+                  <textarea
+                    value={lainLain}
+                    onChange={(e) => setLainLain(e.target.value)}
+                    rows={2}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none resize-none"
+                    placeholder="Spesifikasi atau detail tambahan"
+                  />
+                </div>
+              </div>
+
+              {/* Declarations */}
+              <div className="text-xs text-gray-600 space-y-1 border-t border-gray-100 pt-4">
+                <p>1. Pemohon berjanji akan mematuhi ketentuan pinjaman yang ditetapkan Koperasi Pegawai BKI.</p>
+                <p>2. Apabila pemohon tidak lagi menjadi anggota / pegawai PT BKI, seluruh hutang akan dilunasi sekaligus.</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Simulation ─────────────────────────────────────────────────── */}
           {monthlyInstallment > 0 && (
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 p-6 text-white shadow-lg shadow-teal-200">
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
               <div className="relative">
                 <div className="flex items-center gap-2 mb-4">
                   <Sparkles className="w-5 h-5 text-teal-200" />
@@ -322,11 +1013,11 @@ export default function LoanApplicationPage() {
             </div>
           )}
 
-          {/* Document Upload */}
+          {/* ── Document Upload ─────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Opsional)</h2>
             <p className="text-xs text-gray-500 mb-3">
-              Upload dokumen pendukung seperti slip gaji, surat keterangan, atau dokumen lainnya (PDF, maks 5MB).
+              Upload dokumen pendukung seperti slip gaji, KTP, KK, atau dokumen lainnya (PDF, maks 5MB).
             </p>
             <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
               <Upload className="w-5 h-5 text-gray-400" />
@@ -360,12 +1051,12 @@ export default function LoanApplicationPage() {
             </label>
           </div>
 
-          {/* Approval Info */}
+          {/* ── Approval Info ───────────────────────────────────────────────── */}
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-3">
             <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-800">
               Setelah diajukan, pinjaman akan direview oleh Staf Treasury (analisa kredit), Manager, Bendahara,
-              dan Ketua untuk persetujuan akhir. Pencairan melalui proses SPP dan transfer bank.
+              dan Ketua untuk persetujuan akhir. Formulir dapat diunduh sebelum persetujuan Ketua dan proses SPP.
             </p>
           </div>
 

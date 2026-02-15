@@ -9,7 +9,8 @@ import {
   LOAN_TYPE_LABELS,
   LOAN_STATUS_LABELS,
 } from "@/lib/utils";
-import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight } from "lucide-react";
+import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown } from "lucide-react";
+import Link from "next/link";
 
 interface Loan {
   id: string;
@@ -23,7 +24,7 @@ interface Loan {
   createdAt: string;
 }
 
-type LoanFilter = "all" | "reguler" | "khusus" | "barang" | "travel";
+type LoanFilter = "all" | "reguler" | "khusus" | "barang" | "travel" | "channeling";
 
 export default function PengurusLoansPage() {
   const [userName, setUserName] = useState("");
@@ -108,13 +109,17 @@ export default function PengurusLoansPage() {
   }
 
   function getStatusBadgeClasses(status: string): string {
-    if (["approved", "disbursed"].includes(status))
+    if (["approved", "disbursed", "selesai"].includes(status))
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     if (["rejected"].includes(status))
       return "bg-red-50 text-red-700 border border-red-200";
     if (["draft"].includes(status))
       return "bg-gray-100 text-gray-600 border border-gray-200";
     return "bg-amber-50 text-amber-700 border border-amber-200";
+  }
+
+  function canDownloadForm(loan: Loan): boolean {
+    return loan.loanType !== "channeling" && loan.loanType !== "travel";
   }
 
   const filteredLoans =
@@ -135,6 +140,7 @@ export default function PengurusLoansPage() {
     { key: "khusus", label: "Khusus" },
     { key: "barang", label: "Barang" },
     { key: "travel", label: "Travel" },
+    { key: "channeling", label: "Channeling" },
   ];
 
   if (loading) {
@@ -251,6 +257,7 @@ export default function PengurusLoansPage() {
                     <th className="pb-3 font-medium text-center">Tenor</th>
                     <th className="pb-3 font-medium text-center">Status</th>
                     <th className="pb-3 font-medium">Tanggal</th>
+                    <th className="pb-3 font-medium text-center">Formulir</th>
                     <th className="pb-3 font-medium">Aksi</th>
                   </tr>
                 </thead>
@@ -289,6 +296,20 @@ export default function PengurusLoansPage() {
                           month: "short",
                           year: "numeric",
                         })}
+                      </td>
+                      <td className="py-3.5 text-center">
+                        {canDownloadForm(loan) ? (
+                          <Link
+                            href={`/pengurus/loans/${loan.id}/print`}
+                            target="_blank"
+                            className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                            PDF
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
                       </td>
                       <td className="py-3.5">
                         {(() => {

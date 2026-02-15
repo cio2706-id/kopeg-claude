@@ -48,6 +48,7 @@ export const LOAN_TYPE_LABELS: Record<string, string> = {
   khusus: "Pinjaman Khusus",
   barang: "Pinjaman Barang",
   travel: "Pinjaman Travel",
+  channeling: "Pinjaman Channeling",
 };
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -74,6 +75,8 @@ export const LOAN_STATUS_LABELS: Record<string, string> = {
   bank_process: "Proses Bank",
   disbursed: "Dicairkan",
   rejected: "Ditolak",
+  on_review: "On Review",
+  selesai: "Selesai",
 };
 
 export const PO_STATUS_LABELS: Record<string, string> = {

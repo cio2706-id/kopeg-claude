@@ -37,6 +37,8 @@ export const loanStatusEnum = pgEnum("loan_status", [
   "bank_process",
   "disbursed",
   "rejected",
+  "on_review",
+  "selesai",
 ]);
 
 export const poStatusEnum = pgEnum("po_status", [
@@ -78,6 +80,7 @@ export const loanTypeEnum = pgEnum("loan_type", [
   "khusus",
   "barang",
   "travel",
+  "channeling",
 ]);
 
 export const sppStatusEnum = pgEnum("spp_status", [
@@ -162,6 +165,7 @@ export const loans = pgTable("loans", {
   analysisNotes: text("analysis_notes"),
   analyzedBy: uuid("analyzed_by").references(() => users.id),
   analyzedAt: timestamp("analyzed_at"),
+  formData: jsonb("form_data"),
   documentUrls: jsonb("document_urls").$type<string[]>(),
   accurateVoucherId: varchar("accurate_voucher_id", { length: 100 }),
   accurateJournalId: varchar("accurate_journal_id", { length: 100 }),

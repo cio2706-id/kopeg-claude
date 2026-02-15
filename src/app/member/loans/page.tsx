@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { CreditCard, Plus } from "lucide-react";
+import { CreditCard, Plus, FileDown } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
@@ -95,13 +95,17 @@ export default function LoansPage() {
   /* ---- status badge helper ---- */
 
   function statusBadgeClass(status: string): string {
-    if (status === "approved" || status === "disbursed") {
+    if (status === "approved" || status === "disbursed" || status === "selesai") {
       return "bg-green-100 text-green-700";
     }
     if (status === "rejected") {
       return "bg-red-100 text-red-700";
     }
     return "bg-amber-100 text-amber-700";
+  }
+
+  function canDownloadForm(loan: Loan): boolean {
+    return loan.loanType !== "channeling" && loan.loanType !== "travel";
   }
 
   /* ---- loading state ---- */
@@ -210,6 +214,7 @@ export default function LoansPage() {
                   <th className="pb-3 font-medium text-right">Angsuran/bln</th>
                   <th className="pb-3 font-medium text-center">Status</th>
                   <th className="pb-3 font-medium">Tanggal</th>
+                  <th className="pb-3 font-medium text-center">Formulir</th>
                 </tr>
               </thead>
               <tbody>
@@ -248,6 +253,20 @@ export default function LoansPage() {
                         month: "short",
                         year: "numeric",
                       })}
+                    </td>
+                    <td className="py-3 text-center">
+                      {canDownloadForm(loan) ? (
+                        <Link
+                          href={`/member/loans/${loan.id}/print`}
+                          target="_blank"
+                          className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 text-xs font-medium"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          Download
+                        </Link>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
                     </td>
                   </tr>
                 ))}
