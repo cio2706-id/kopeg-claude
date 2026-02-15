@@ -28,6 +28,7 @@ const statusUpdateSchema = z.object({
   ]),
   vendorName: z.string().optional(),
   deliveryDate: z.string().optional(),
+  receiptDocumentUrl: z.string().url().optional(),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().optional(),
   taxInvoiceNumber: z.string().optional(),
@@ -90,6 +91,14 @@ export async function PATCH(
       );
     }
 
+    // Require receipt document (Tanda Terima Barang) for goods_delivered
+    if (parsed.data.status === "goods_delivered" && !parsed.data.receiptDocumentUrl) {
+      return NextResponse.json(
+        { error: "Tanda Terima Barang wajib diupload sebelum mengirim barang ke client" },
+        { status: 400 }
+      );
+    }
+
     const updateData: Record<string, unknown> = {
       status: parsed.data.status,
       updatedAt: new Date(),
@@ -105,6 +114,7 @@ export async function PATCH(
     }
     if (parsed.data.status === "goods_delivered") {
       updateData.goodsDeliveredAt = new Date();
+      updateData.receiptDocumentUrl = parsed.data.receiptDocumentUrl;
     }
     if (parsed.data.invoiceNumber) updateData.invoiceNumber = parsed.data.invoiceNumber;
     if (parsed.data.invoiceDate) updateData.invoiceDate = new Date(parsed.data.invoiceDate);

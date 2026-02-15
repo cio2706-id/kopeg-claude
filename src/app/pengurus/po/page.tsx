@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatCurrency, PO_STATUS_LABELS } from "@/lib/utils";
-import { ShoppingCart, Package, CheckCircle2, Clock, Loader2, ArrowRight, FileText } from "lucide-react";
+import { ShoppingCart, Package, CheckCircle2, Clock, Loader2, ArrowRight, FileText, Upload, Download, X, Eye } from "lucide-react";
 
 interface PurchaseOrder {
   id: string;
@@ -16,6 +16,7 @@ interface PurchaseOrder {
   estimatedAmount?: string;
   totalAmount?: string;
   vendorName?: string;
+  receiptDocumentUrl?: string;
   createdAt: string;
 }
 
@@ -26,6 +27,10 @@ export default function PengurusPOPage() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [userRole, setUserRole] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [uploadModalPoId, setUploadModalPoId] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [viewDocUrl, setViewDocUrl] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -92,6 +97,52 @@ export default function PengurusPOPage() {
     }
   }
 
+  async function handleUploadAndDeliver(poId: string) {
+    if (!uploadFile) {
+      alert("Silakan pilih file Tanda Terima Barang terlebih dahulu");
+      return;
+    }
+    setUploading(true);
+    try {
+      // 1. Upload file
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("type", "tanda-terima");
+      const uploadRes = await fetch("/api/upload-document", {
+        method: "POST",
+        body: formData,
+      });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        alert(err.error || "Gagal mengupload file");
+        return;
+      }
+      const { url } = await uploadRes.json();
+
+      // 2. Update PO status with receipt document URL
+      const statusRes = await fetch(`/api/po/${poId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "goods_delivered",
+          receiptDocumentUrl: url,
+        }),
+      });
+      if (statusRes.ok) {
+        setUploadModalPoId(null);
+        setUploadFile(null);
+        loadData();
+      } else {
+        const data = await statusRes.json();
+        alert(data.error || "Gagal mengupdate status");
+      }
+    } catch {
+      alert("Gagal mengupload dan mengupdate status");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const ROLE_DISPLAY: Record<string, string> = {
     staf_treasury: "Staf Treasury",
     staf_pengadaan: "Staf Pengadaan",
@@ -105,8 +156,8 @@ export default function PengurusPOPage() {
       case "spp_process": return { label: "Proses Pengadaan", nextStatus: "procurement", requiredRole: "staf_pengadaan" };
       case "procurement": return { label: "Kirim Barang", nextStatus: "delivery", requiredRole: "staf_pengadaan" };
       case "delivery": return { label: "Barang Diterima", nextStatus: "goods_received", requiredRole: "staf_piutang" };
-      case "goods_received": return { label: "Diantar ke Client", nextStatus: "goods_delivered", requiredRole: "staf_piutang" };
-      case "goods_delivered": return { label: "Proses Invoice", nextStatus: "invoicing", requiredRole: "staf_akunting" };
+      case "goods_received": return { label: "Upload Tanda Terima & Kirim", nextStatus: "goods_delivered", needsInput: "upload_receipt", requiredRole: "staf_piutang" };
+      case "goods_delivered": return { label: "Proses Invoice", nextStatus: "invoicing", needsInput: "view_receipt", requiredRole: "staf_akunting" };
       case "invoicing": return { label: "Menunggu Bayar", nextStatus: "waiting_payment", requiredRole: "staf_akunting" };
       case "waiting_payment": return { label: "Bayar Diterima", nextStatus: "payment_received", requiredRole: "staf_treasury" };
       case "payment_received": return { label: "Selesai", nextStatus: "completed", requiredRole: "staf_akunting" };
@@ -265,9 +316,35 @@ export default function PengurusPOPage() {
                       <td className="py-3.5">
                         {(() => {
                           const action = getNextAction(po.status);
-                          if (!action) return <span className="text-xs text-gray-300">—</span>;
+                          // Show receipt document link for any PO that has it (post-delivery statuses)
+                          const showReceiptLink = po.receiptDocumentUrl && !action?.needsInput?.includes("receipt");
+
+                          if (!action) {
+                            return showReceiptLink ? (
+                              <button
+                                onClick={() => setViewDocUrl(po.receiptDocumentUrl!)}
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
+                                title="Lihat Tanda Terima"
+                              >
+                                <Eye className="w-3 h-3" /> Tanda Terima
+                              </button>
+                            ) : <span className="text-xs text-gray-300">—</span>;
+                          }
                           if (userRole !== action.requiredRole) {
-                            return <span className="text-[10px] text-gray-400 italic">Menunggu {ROLE_DISPLAY[action.requiredRole] || action.requiredRole}</span>;
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                {showReceiptLink && (
+                                  <button
+                                    onClick={() => setViewDocUrl(po.receiptDocumentUrl!)}
+                                    className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
+                                    title="Lihat Tanda Terima"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                  </button>
+                                )}
+                                <span className="text-[10px] text-gray-400 italic">Menunggu {ROLE_DISPLAY[action.requiredRole] || action.requiredRole}</span>
+                              </div>
+                            );
                           }
                           if (action.needsInput === "spp") {
                             return (
@@ -277,6 +354,43 @@ export default function PengurusPOPage() {
                               >
                                 <FileText className="w-3 h-3" /> Buat SPP
                               </button>
+                            );
+                          }
+                          if (action.needsInput === "upload_receipt") {
+                            return (
+                              <button
+                                onClick={() => setUploadModalPoId(po.id)}
+                                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 font-medium transition"
+                              >
+                                <Upload className="w-3 h-3" /> Upload Tanda Terima
+                              </button>
+                            );
+                          }
+                          if (action.needsInput === "view_receipt") {
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                {po.receiptDocumentUrl && (
+                                  <button
+                                    onClick={() => setViewDocUrl(po.receiptDocumentUrl!)}
+                                    className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
+                                    title="Lihat Tanda Terima"
+                                  >
+                                    <Eye className="w-3 h-3" /> Tanda Terima
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => updatePOStatus(po.id, action.nextStatus)}
+                                  disabled={updatingId === po.id}
+                                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 font-medium transition disabled:opacity-50"
+                                >
+                                  {updatingId === po.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <ArrowRight className="w-3 h-3" />
+                                  )}
+                                  Invoice
+                                </button>
+                              </div>
                             );
                           }
                           return (
@@ -310,6 +424,116 @@ export default function PengurusPOPage() {
           )}
         </div>
       </div>
+      {/* Upload Tanda Terima Modal */}
+      {uploadModalPoId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Upload Tanda Terima Barang</h3>
+              <button
+                onClick={() => { setUploadModalPoId(null); setUploadFile(null); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Upload dokumen Tanda Terima Barang sebelum mengirim barang ke client. Format: PDF, JPEG, PNG, atau WebP (maks 5MB).
+            </p>
+            <div className="mb-4">
+              <label className="block">
+                <div className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${uploadFile ? "border-teal-300 bg-teal-50" : "border-gray-200 hover:border-gray-300"}`}>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  />
+                  {uploadFile ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <FileText className="w-5 h-5 text-teal-600" />
+                      <span className="text-sm font-medium text-teal-700">{uploadFile.name}</span>
+                      <span className="text-xs text-gray-400">({(uploadFile.size / 1024).toFixed(0)} KB)</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-400">Klik untuk memilih file</p>
+                    </>
+                  )}
+                </div>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setUploadModalPoId(null); setUploadFile(null); }}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => handleUploadAndDeliver(uploadModalPoId)}
+                disabled={!uploadFile || uploading}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-teal-500 rounded-xl hover:bg-teal-600 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Mengupload...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Upload & Kirim
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Tanda Terima Modal */}
+      {viewDocUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl mx-4 p-6 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Tanda Terima Barang</h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={viewDocUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
+                >
+                  <Download className="w-3 h-3" /> Download
+                </a>
+                <button
+                  onClick={() => setViewDocUrl(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto rounded-xl bg-gray-50 border border-gray-100">
+              {viewDocUrl.match(/\.(jpg|jpeg|png|webp)/i) ? (
+                <img
+                  src={viewDocUrl}
+                  alt="Tanda Terima Barang"
+                  className="w-full h-auto object-contain"
+                />
+              ) : (
+                <iframe
+                  src={viewDocUrl}
+                  className="w-full h-[70vh]"
+                  title="Tanda Terima Barang"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

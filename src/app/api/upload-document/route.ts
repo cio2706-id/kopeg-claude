@@ -11,10 +11,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Validate file type
-    if (file.type !== "application/pdf") {
+    // Validate file type (PDF or images for receipt documents)
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+    if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Only PDF files are allowed" },
+        { error: "Only PDF, JPEG, PNG, or WebP files are allowed" },
         { status: 400 }
       );
     }
@@ -46,7 +52,12 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin.storage.createBucket("documents", {
         public: true,
         fileSizeLimit: 5 * 1024 * 1024,
-        allowedMimeTypes: ["application/pdf"],
+        allowedMimeTypes: [
+          "application/pdf",
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+        ],
       });
     }
 
@@ -60,7 +71,7 @@ export async function POST(request: NextRequest) {
     const { error: uploadError } = await supabaseAdmin.storage
       .from("documents")
       .upload(filePath, arrayBuffer, {
-        contentType: "application/pdf",
+        contentType: file.type,
         upsert: false,
       });
 
