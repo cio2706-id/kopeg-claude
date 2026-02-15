@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ROLE_LABELS } from "@/lib/utils";
-import { Users, Search, Edit3, Check, X } from "lucide-react";
+import { Users, Search, Edit3, Check, X, Plus, Loader2 } from "lucide-react";
 
 interface User {
   id: string;
@@ -39,6 +39,19 @@ export default function PengurusMembersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    fullName: "",
+    email: "",
+    role: "member",
+    phone: "",
+    employeeId: "",
+    department: "",
+    position: "",
+    company: "",
+  });
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState("");
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -112,6 +125,36 @@ export default function PengurusMembersPage() {
     }
   }
 
+  function openAddModal() {
+    setAddForm({ fullName: "", email: "", role: "member", phone: "", employeeId: "", department: "", position: "", company: "" });
+    setAddError("");
+    setShowAddModal(true);
+  }
+
+  async function handleAddMember(e: React.FormEvent) {
+    e.preventDefault();
+    setAddLoading(true);
+    setAddError("");
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAddError(data.error || "Gagal menambah anggota");
+        return;
+      }
+      setShowAddModal(false);
+      loadData(); // Refresh the list
+    } catch {
+      setAddError("Gagal menambah anggota");
+    } finally {
+      setAddLoading(false);
+    }
+  }
+
   function getRoleBadgeClasses(role: string): string {
     switch (role) {
       case "ketua":
@@ -172,6 +215,13 @@ export default function PengurusMembersPage() {
             </p>
           </div>
         </div>
+        <button
+          onClick={openAddModal}
+          className="flex items-center gap-2 px-4 py-2.5 bg-teal-500 text-white text-sm font-medium rounded-xl hover:bg-teal-600 transition shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          Tambah Anggota
+        </button>
       </div>
 
       {/* Search / Filter */}
@@ -314,6 +364,147 @@ export default function PengurusMembersPage() {
           )}
         </div>
       </div>
+      {/* Add Member Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">Tambah Anggota Baru</h2>
+              <button onClick={() => setShowAddModal(false)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddMember} className="p-5 space-y-4">
+              {addError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+                  {addError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Nama Lengkap *</label>
+                <input
+                  type="text"
+                  required
+                  value={addForm.fullName}
+                  onChange={(e) => setAddForm({ ...addForm, fullName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                  placeholder="Nama lengkap anggota"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={addForm.email}
+                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                  placeholder="email@kopeg-bki.id"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">NUP / No. Anggota</label>
+                  <input
+                    type="text"
+                    value={addForm.employeeId}
+                    onChange={(e) => setAddForm({ ...addForm, employeeId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="Nomor anggota"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">No. Telepon</label>
+                  <input
+                    type="text"
+                    value={addForm.phone}
+                    onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="08xxxxxxxx"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Perusahaan</label>
+                  <input
+                    type="text"
+                    value={addForm.company}
+                    onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="BKI / IDS / KOPERASI"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Departemen</label>
+                  <input
+                    type="text"
+                    value={addForm.department}
+                    onChange={(e) => setAddForm({ ...addForm, department: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="Nama departemen"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Jabatan</label>
+                  <input
+                    type="text"
+                    value={addForm.position}
+                    onChange={(e) => setAddForm({ ...addForm, position: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+                    placeholder="Jabatan anggota"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+                  <select
+                    value={addForm.role}
+                    onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+                  >
+                    {ALL_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r] || r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={addLoading}
+                  className="flex items-center gap-2 px-5 py-2 bg-teal-500 text-white text-sm font-medium rounded-lg hover:bg-teal-600 disabled:opacity-50 transition"
+                >
+                  {addLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Simpan"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
