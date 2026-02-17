@@ -14,10 +14,11 @@ import { randomUUID } from "crypto";
  *   E(4): Unit Penempatan, F(5): Jabatan, G(6): EMAIL,
  *   H(7): STATUS (AKTIF/PASIF), I(8): Simpanan, J(9): Pinjaman
  *
- * Strategy: Clean replace of existing member data.
+ * Strategy: Full reset of member data.
  * - Pengurus (non-member roles) are NOT affected.
- * - Old members with no financial data are DELETED to avoid duplicates.
- * - Old members with financial data are updated in place.
+ * - Case-insensitive email matching to avoid duplicates (ALDICIO vs aldicio).
+ * - Duplicate member users are merged (financial data transferred to survivor).
+ * - Old members not in the new Excel are fully deleted (including financial data).
  * - New members from Excel are inserted fresh.
  */
 export async function POST(request: NextRequest) {
@@ -60,41 +61,53 @@ export async function POST(request: NextRequest) {
       defval: null,
     });
 
-    // ─── Step 1: Clean up old member data ────────────────────────────────────
-    // Delete employee_data for ALL member-role users
+    // ─── Step 1: Delete all employee_data for members ──────────────────────────
     await db.execute(sql`
       DELETE FROM employee_data
       WHERE user_id IN (SELECT id FROM users WHERE role = 'member')
     `);
 
-    // Delete member users that have NO references in financial tables
-    // (savings, loans, loan_balances, monthly_deductions, purchase_orders, approvals)
-    // Members WITH financial data are kept and will be updated
-    // Count members before delete
+    // ─── Step 2: Merge case-insensitive duplicate members ──────────────────────
+    // Find groups of members with the same email (case-insensitive)
+    const dupGroups = await db.execute(sql`
+      SELECT LOWER(email) as lower_email,
+             array_agg(id ORDER BY created_at ASC) as user_ids
+      FROM users
+      WHERE role = 'member'
+      GROUP BY LOWER(email)
+      HAVING COUNT(*) > 1
+    `);
+
+    let merged = 0;
+    for (const group of dupGroups as unknown as { lower_email: string; user_ids: string[] }[]) {
+      const ids = group.user_ids;
+      const keepId = ids[0]; // keep oldest
+      const removeIds = ids.slice(1);
+
+      for (const removeId of removeIds) {
+        // Transfer all financial data references to the survivor
+        await db.execute(sql`UPDATE savings SET user_id = ${keepId} WHERE user_id = ${removeId}`);
+        await db.execute(sql`UPDATE loans SET user_id = ${keepId} WHERE user_id = ${removeId}`);
+        await db.execute(sql`UPDATE loan_balances SET user_id = ${keepId} WHERE user_id = ${removeId}`);
+        await db.execute(sql`UPDATE monthly_deductions SET user_id = ${keepId} WHERE user_id = ${removeId}`);
+        await db.execute(sql`UPDATE purchase_orders SET user_id = ${keepId} WHERE user_id = ${removeId}`);
+        // Delete the duplicate user
+        await db.execute(sql`DELETE FROM users WHERE id = ${removeId}`);
+        merged++;
+      }
+    }
+
+    // Count members before processing
     const membersBefore = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
     const beforeCount = membersBefore.length;
 
-    await db.execute(sql`
-      DELETE FROM users
-      WHERE role = 'member'
-        AND id NOT IN (SELECT DISTINCT user_id FROM savings WHERE user_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT user_id FROM loans WHERE user_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT user_id FROM loan_balances WHERE user_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT user_id FROM monthly_deductions WHERE user_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT user_id FROM purchase_orders WHERE user_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT approver_id FROM approvals WHERE approver_id IS NOT NULL)
-        AND id NOT IN (SELECT DISTINCT uploaded_by FROM upload_logs WHERE uploaded_by IS NOT NULL)
-    `);
-
-    const membersAfter = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
-    const deleted = beforeCount - membersAfter.length;
-
-    // ─── Step 2: Process Excel rows ──────────────────────────────────────────
+    // ─── Step 3: Process Excel rows ────────────────────────────────────────────
     let created = 0;
     let updated = 0;
     let skipped = 0;
     const errors: string[] = [];
     const processedEmails = new Set<string>();
+    const matchedUserIds = new Set<string>();
 
     // Start from row 1 (skip header row 0)
     for (let i = 1; i < data.length; i++) {
@@ -130,36 +143,38 @@ export async function POST(request: NextRequest) {
       }
 
       // Skip duplicates in the same file
-      if (processedEmails.has(memberEmail)) {
+      if (processedEmails.has(memberEmail.toLowerCase())) {
         skipped++;
         if (errors.length < 20) errors.push(`Row ${i + 1}: "${name}" - duplicate email "${memberEmail}"`);
         continue;
       }
-      processedEmails.add(memberEmail);
+      processedEmails.add(memberEmail.toLowerCase());
 
       const isActive = status === "AKTIF" || status === "";
 
       try {
-        // Try to find existing user by email (only survivors with financial data)
-        const [existing] = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, memberEmail));
+        // Case-insensitive email lookup
+        const existingRows = await db.execute(
+          sql`SELECT id, employee_id, department FROM users WHERE LOWER(email) = ${memberEmail.toLowerCase()} AND role = 'member' LIMIT 1`
+        ) as unknown as { id: string; employee_id: string; department: string }[];
+        const existing = existingRows[0];
 
         if (existing) {
-          // Update existing user (kept because they have financial data)
+          // Update existing user
+          matchedUserIds.add(existing.id);
           await db
             .update(users)
             .set({
               fullName: name,
-              employeeId: nup || existing.employeeId,
+              email: memberEmail, // normalize email casing
+              employeeId: nup || existing.employee_id,
               department: departemen || existing.department,
               isActive,
               updatedAt: new Date(),
             })
             .where(eq(users.id, existing.id));
 
-          // Create fresh employee_data (old ones were deleted in step 1)
+          // Create fresh employee_data
           await db.insert(employeeData).values({
             userId: existing.id,
             fullName: name,
@@ -172,7 +187,7 @@ export async function POST(request: NextRequest) {
 
           updated++;
         } else {
-          // Create new user with placeholder authId (will be linked on first login)
+          // Create new user with placeholder authId
           const placeholderAuthId = `pending_${randomUUID()}`;
 
           const [newUser] = await db
@@ -187,6 +202,8 @@ export async function POST(request: NextRequest) {
               isActive,
             })
             .returning();
+
+          matchedUserIds.add(newUser.id);
 
           // Create employee_data record
           await db.insert(employeeData).values({
@@ -211,6 +228,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ─── Step 4: Delete old members NOT in the new Excel ───────────────────────
+    // This includes deleting their financial data (full reset)
+    const remainingMembers = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
+    const unmatchedIds = remainingMembers
+      .filter((m) => !matchedUserIds.has(m.id))
+      .map((m) => m.id);
+
+    let forceDeleted = 0;
+    for (const uid of unmatchedIds) {
+      // Delete all related financial data
+      await db.execute(sql`DELETE FROM savings WHERE user_id = ${uid}`);
+      await db.execute(sql`DELETE FROM loans WHERE user_id = ${uid}`);
+      await db.execute(sql`DELETE FROM loan_balances WHERE user_id = ${uid}`);
+      await db.execute(sql`DELETE FROM monthly_deductions WHERE user_id = ${uid}`);
+      await db.execute(sql`UPDATE purchase_orders SET user_id = NULL WHERE user_id = ${uid}`);
+      await db.execute(sql`UPDATE approvals SET approver_id = NULL WHERE approver_id = ${uid}`);
+      await db.execute(sql`UPDATE upload_logs SET uploaded_by = NULL WHERE uploaded_by = ${uid}`);
+      await db.execute(sql`DELETE FROM employee_data WHERE user_id = ${uid}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${uid}`);
+      forceDeleted++;
+    }
+
     // Log the upload
     await db.insert(uploadLogs).values({
       uploadType: "member_database",
@@ -224,11 +263,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      deleted,
+      deleted: forceDeleted,
+      merged,
       created,
       updated,
       skipped,
       total: created + updated + skipped,
+      beforeCount,
       errors: errors.slice(0, 20),
     });
   } catch (error) {
