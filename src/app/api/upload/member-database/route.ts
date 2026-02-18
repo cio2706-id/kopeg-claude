@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users, employeeData, uploadLogs } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { eq, sql } from "drizzle-orm";
 import * as XLSX from "xlsx";
-import { randomUUID } from "crypto";
+
+const DEFAULT_PASSWORD = "KopegBKI2024!";
 
 /**
  * Upload member database from "DATA ANGGOTA KOPERASI UPDATE.xlsx"
@@ -19,7 +21,7 @@ import { randomUUID } from "crypto";
  * - Case-insensitive email matching to avoid duplicates (ALDICIO vs aldicio).
  * - Duplicate member users are merged (financial data transferred to survivor).
  * - Old members not in the new Excel are fully deleted (including financial data).
- * - New members from Excel are inserted fresh.
+ * - Auto-creates Supabase Auth accounts with default password.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +33,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const dbUser = await getOrCreateUser(authUser);
+
+    // Create admin client for auth user management
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY not configured" }, { status: 500 });
+    }
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -68,7 +80,6 @@ export async function POST(request: NextRequest) {
     `);
 
     // ─── Step 2: Merge case-insensitive duplicate members ──────────────────────
-    // Find groups of members with the same email (case-insensitive)
     const dupGroups = await db.execute(sql`
       SELECT LOWER(email) as lower_email,
              array_agg(id ORDER BY created_at ASC) as user_ids
@@ -81,23 +92,20 @@ export async function POST(request: NextRequest) {
     let merged = 0;
     for (const group of dupGroups as unknown as { lower_email: string; user_ids: string[] }[]) {
       const ids = group.user_ids;
-      const keepId = ids[0]; // keep oldest
+      const keepId = ids[0];
       const removeIds = ids.slice(1);
 
       for (const removeId of removeIds) {
-        // Transfer all financial data references to the survivor
         await db.execute(sql`UPDATE savings SET user_id = ${keepId} WHERE user_id = ${removeId}`);
         await db.execute(sql`UPDATE loans SET user_id = ${keepId} WHERE user_id = ${removeId}`);
         await db.execute(sql`UPDATE loan_balances SET user_id = ${keepId} WHERE user_id = ${removeId}`);
         await db.execute(sql`UPDATE monthly_deductions SET user_id = ${keepId} WHERE user_id = ${removeId}`);
         await db.execute(sql`UPDATE purchase_orders SET user_id = ${keepId} WHERE user_id = ${removeId}`);
-        // Delete the duplicate user
         await db.execute(sql`DELETE FROM users WHERE id = ${removeId}`);
         merged++;
       }
     }
 
-    // Count members before processing
     const membersBefore = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
     const beforeCount = membersBefore.length;
 
@@ -105,11 +113,11 @@ export async function POST(request: NextRequest) {
     let created = 0;
     let updated = 0;
     let skipped = 0;
+    let authCreated = 0;
     const errors: string[] = [];
     const processedEmails = new Set<string>();
     const matchedUserIds = new Set<string>();
 
-    // Start from row 1 (skip header row 0)
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       if (!row) continue;
@@ -123,11 +131,9 @@ export async function POST(request: NextRequest) {
       const email = row[6] ? String(row[6]).trim().toLowerCase() : "";
       const status = row[7] ? String(row[7]).trim().toUpperCase() : "";
 
-      // Skip empty rows or header-like rows
       if (!name || name.toLowerCase() === "nama" || name.toLowerCase() === "nama pegawai") continue;
       if (name.toLowerCase().includes("jumlah") || name.toLowerCase().includes("total")) continue;
 
-      // Generate email if missing: use NUP or name-based
       let memberEmail = email;
       if (!memberEmail) {
         if (nup) {
@@ -142,7 +148,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Skip duplicates in the same file
       if (processedEmails.has(memberEmail.toLowerCase())) {
         skipped++;
         if (errors.length < 20) errors.push(`Row ${i + 1}: "${name}" - duplicate email "${memberEmail}"`);
@@ -153,20 +158,29 @@ export async function POST(request: NextRequest) {
       const isActive = status === "AKTIF" || status === "";
 
       try {
-        // Case-insensitive email lookup
+        // Case-insensitive email lookup in DB
         const existingRows = await db.execute(
-          sql`SELECT id, employee_id, department FROM users WHERE LOWER(email) = ${memberEmail.toLowerCase()} AND role = 'member' LIMIT 1`
-        ) as unknown as { id: string; employee_id: string; department: string }[];
+          sql`SELECT id, auth_id, employee_id, department FROM users WHERE LOWER(email) = ${memberEmail.toLowerCase()} AND role = 'member' LIMIT 1`
+        ) as unknown as { id: string; auth_id: string; employee_id: string; department: string }[];
         const existing = existingRows[0];
 
         if (existing) {
-          // Update existing user
           matchedUserIds.add(existing.id);
+
+          // If authId is a placeholder, create a real Supabase Auth account
+          if (existing.auth_id.startsWith("pending_")) {
+            const realAuthId = await ensureAuthAccount(supabaseAdmin, memberEmail, name, nup);
+            if (realAuthId) {
+              await db.update(users).set({ authId: realAuthId }).where(eq(users.id, existing.id));
+              authCreated++;
+            }
+          }
+
           await db
             .update(users)
             .set({
               fullName: name,
-              email: memberEmail, // normalize email casing
+              email: memberEmail,
               employeeId: nup || existing.employee_id,
               department: departemen || existing.department,
               isActive,
@@ -174,7 +188,6 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(users.id, existing.id));
 
-          // Create fresh employee_data
           await db.insert(employeeData).values({
             userId: existing.id,
             fullName: name,
@@ -187,13 +200,14 @@ export async function POST(request: NextRequest) {
 
           updated++;
         } else {
-          // Create new user with placeholder authId
-          const placeholderAuthId = `pending_${randomUUID()}`;
+          // Create Supabase Auth account first
+          const authId = await ensureAuthAccount(supabaseAdmin, memberEmail, name, nup);
+          if (authId) authCreated++;
 
           const [newUser] = await db
             .insert(users)
             .values({
-              authId: placeholderAuthId,
+              authId: authId || `pending_${crypto.randomUUID()}`,
               email: memberEmail,
               fullName: name,
               role: "member",
@@ -205,7 +219,6 @@ export async function POST(request: NextRequest) {
 
           matchedUserIds.add(newUser.id);
 
-          // Create employee_data record
           await db.insert(employeeData).values({
             userId: newUser.id,
             fullName: name,
@@ -226,27 +239,33 @@ export async function POST(request: NextRequest) {
           );
         }
       }
+
+      // Small delay every 50 rows to avoid Supabase rate limits
+      if ((created + updated) % 50 === 0 && (created + updated) > 0) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
     }
 
     // ─── Step 4: Delete old members NOT in the new Excel ───────────────────────
-    // This includes deleting their financial data (full reset)
-    const remainingMembers = await db.select({ id: users.id }).from(users).where(eq(users.role, "member"));
-    const unmatchedIds = remainingMembers
-      .filter((m) => !matchedUserIds.has(m.id))
-      .map((m) => m.id);
+    const remainingMembers = await db.select({ id: users.id, authId: users.authId }).from(users).where(eq(users.role, "member"));
+    const unmatchedMembers = remainingMembers.filter((m) => !matchedUserIds.has(m.id));
 
     let forceDeleted = 0;
-    for (const uid of unmatchedIds) {
+    for (const member of unmatchedMembers) {
+      // Delete Supabase Auth account if it's a real one (not placeholder)
+      if (!member.authId.startsWith("pending_")) {
+        await supabaseAdmin.auth.admin.deleteUser(member.authId);
+      }
       // Delete all related financial data
-      await db.execute(sql`DELETE FROM savings WHERE user_id = ${uid}`);
-      await db.execute(sql`DELETE FROM loans WHERE user_id = ${uid}`);
-      await db.execute(sql`DELETE FROM loan_balances WHERE user_id = ${uid}`);
-      await db.execute(sql`DELETE FROM monthly_deductions WHERE user_id = ${uid}`);
-      await db.execute(sql`UPDATE purchase_orders SET user_id = NULL WHERE user_id = ${uid}`);
-      await db.execute(sql`UPDATE approvals SET approver_id = NULL WHERE approver_id = ${uid}`);
-      await db.execute(sql`UPDATE upload_logs SET uploaded_by = NULL WHERE uploaded_by = ${uid}`);
-      await db.execute(sql`DELETE FROM employee_data WHERE user_id = ${uid}`);
-      await db.execute(sql`DELETE FROM users WHERE id = ${uid}`);
+      await db.execute(sql`DELETE FROM savings WHERE user_id = ${member.id}`);
+      await db.execute(sql`DELETE FROM loans WHERE user_id = ${member.id}`);
+      await db.execute(sql`DELETE FROM loan_balances WHERE user_id = ${member.id}`);
+      await db.execute(sql`DELETE FROM monthly_deductions WHERE user_id = ${member.id}`);
+      await db.execute(sql`UPDATE purchase_orders SET user_id = NULL WHERE user_id = ${member.id}`);
+      await db.execute(sql`UPDATE approvals SET approver_id = NULL WHERE approver_id = ${member.id}`);
+      await db.execute(sql`UPDATE upload_logs SET uploaded_by = NULL WHERE uploaded_by = ${member.id}`);
+      await db.execute(sql`DELETE FROM employee_data WHERE user_id = ${member.id}`);
+      await db.execute(sql`DELETE FROM users WHERE id = ${member.id}`);
       forceDeleted++;
     }
 
@@ -267,6 +286,7 @@ export async function POST(request: NextRequest) {
       merged,
       created,
       updated,
+      authCreated,
       skipped,
       total: created + updated + skipped,
       beforeCount,
@@ -281,5 +301,46 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Ensure a Supabase Auth account exists for the given email.
+ * Creates one with default password if it doesn't exist.
+ * Returns the auth user ID, or null on failure.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function ensureAuthAccount(
+  supabaseAdmin: any,
+  email: string,
+  fullName: string,
+  employeeNumber: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: DEFAULT_PASSWORD,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        employee_number: employeeNumber,
+      },
+    });
+
+    if (error) {
+      if (error.message.includes("already been registered")) {
+        // User already has auth account - find their ID
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+        const existingAuth = listData?.users?.find(
+          (u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase()
+        );
+        return existingAuth?.id || null;
+      }
+      return null;
+    }
+
+    return data.user?.id || null;
+  } catch {
+    return null;
   }
 }

@@ -31,6 +31,7 @@ interface UploadResult {
   updated?: number;
   deleted?: number;
   merged?: number;
+  authCreated?: number;
   skipped?: number;
   total?: number;
   totalAmount?: number;
@@ -751,6 +752,12 @@ function UploadResultDisplay({ result }: { result: UploadResult }) {
           <div className="bg-white rounded-lg p-3">
             <p className="text-xs text-gray-500">Duplikat Digabung</p>
             <p className="text-lg font-semibold text-orange-600">{result.merged}</p>
+          </div>
+        )}
+        {result.authCreated !== undefined && result.authCreated > 0 && (
+          <div className="bg-white rounded-lg p-3">
+            <p className="text-xs text-gray-500">Akun Login Dibuat</p>
+            <p className="text-lg font-semibold text-indigo-600">{result.authCreated}</p>
           </div>
         )}
         {result.skipped !== undefined && (
