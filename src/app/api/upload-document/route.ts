@@ -45,19 +45,27 @@ export async function POST(request: NextRequest) {
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    // Ensure bucket exists
+    // Ensure bucket exists and has correct allowed mime types
+    const allowedMimes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
     const { data: buckets } = await supabaseAdmin.storage.listBuckets();
     const bucketExists = buckets?.some((b) => b.name === "documents");
     if (!bucketExists) {
       await supabaseAdmin.storage.createBucket("documents", {
         public: true,
         fileSizeLimit: 5 * 1024 * 1024,
-        allowedMimeTypes: [
-          "application/pdf",
-          "image/jpeg",
-          "image/png",
-          "image/webp",
-        ],
+        allowedMimeTypes: allowedMimes,
+      });
+    } else {
+      // Update bucket to ensure images are allowed (may have been created with PDF-only)
+      await supabaseAdmin.storage.updateBucket("documents", {
+        public: true,
+        fileSizeLimit: 5 * 1024 * 1024,
+        allowedMimeTypes: allowedMimes,
       });
     }
 

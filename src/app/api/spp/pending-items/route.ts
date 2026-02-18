@@ -29,6 +29,7 @@ export async function GET() {
         status: loans.status,
         userId: loans.userId,
         memberName: users.fullName,
+        memberDepartment: users.department,
         coaCode: loans.coaCode,
         sppId: loans.sppId,
         createdAt: loans.createdAt,
@@ -48,8 +49,10 @@ export async function GET() {
         poNumber: purchaseOrders.poNumber,
         description: purchaseOrders.description,
         totalAmount: purchaseOrders.totalAmount,
+        estimatedAmount: purchaseOrders.estimatedAmount,
         status: purchaseOrders.status,
         requesterName: purchaseOrders.requesterName,
+        requesterDivisi: purchaseOrders.requesterDivisi,
         vendorName: purchaseOrders.vendorName,
         createdAt: purchaseOrders.createdAt,
       })

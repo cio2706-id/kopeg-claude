@@ -129,3 +129,57 @@ export const PO_APPROVAL_STEPS = [
   { role: "staf_pengadaan" as const, order: 1, label: "Review & Pendetailan Barang" },
   { role: "manager" as const, order: 2, label: "Approval RAB Barang" },
 ];
+
+// ─── Number to Indonesian Words ────────────────────────────────────────────
+
+const SATUAN = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan"];
+
+function ratusan(n: number): string {
+  if (n === 0) return "";
+  const s = Math.floor(n / 100);
+  const p = Math.floor((n % 100) / 10);
+  const u = n % 10;
+  let result = "";
+  if (s === 1) result += "Seratus ";
+  else if (s > 1) result += SATUAN[s] + " Ratus ";
+  if (p === 1) {
+    if (u === 0) result += "Sepuluh";
+    else if (u === 1) result += "Sebelas";
+    else result += SATUAN[u] + " Belas";
+    return result.trim();
+  } else if (p > 1) {
+    result += SATUAN[p] + " Puluh ";
+  }
+  if (u > 0) result += SATUAN[u];
+  return result.trim();
+}
+
+export function numberToIndonesianWords(amount: number): string {
+  if (amount === 0) return "Nol Rupiah";
+  if (amount < 0) return "Minus " + numberToIndonesianWords(-amount);
+
+  const num = Math.floor(amount);
+  const groups: { divisor: number; label: string }[] = [
+    { divisor: 1_000_000_000_000, label: "Triliun" },
+    { divisor: 1_000_000_000, label: "Miliar" },
+    { divisor: 1_000_000, label: "Juta" },
+    { divisor: 1_000, label: "Ribu" },
+    { divisor: 1, label: "" },
+  ];
+
+  let remaining = num;
+  const parts: string[] = [];
+
+  for (const { divisor, label } of groups) {
+    const group = Math.floor(remaining / divisor);
+    remaining = remaining % divisor;
+    if (group === 0) continue;
+    if (group === 1 && label === "Ribu") {
+      parts.push("Seribu");
+    } else {
+      parts.push(ratusan(group) + (label ? " " + label : ""));
+    }
+  }
+
+  return parts.join(" ").replace(/\s+/g, " ").trim() + " Rupiah";
+}

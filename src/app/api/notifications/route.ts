@@ -77,12 +77,33 @@ export async function GET() {
       pendingSppApprovals = pending.length;
     }
 
+    // 4. PO tasks for current role
+    // Count POs that are in a status requiring this user's role action
+    type PoStatus = typeof purchaseOrders.status.enumValues[number];
+    const rolePoStatusMap: Record<string, PoStatus[]> = {
+      staf_treasury: ["approved_rab", "waiting_payment"],
+      staf_pengadaan: ["review_pengadaan", "pricing", "spp_process", "procurement", "delivery"],
+      staf_piutang: ["goods_received"],
+      staf_akunting: ["goods_delivered", "invoicing", "payment_received"],
+    };
+
+    let pendingPoTasks = 0;
+    const myPoStatuses = rolePoStatusMap[dbUser.role];
+    if (myPoStatuses && myPoStatuses.length > 0) {
+      const poTasks = await db
+        .select({ id: purchaseOrders.id })
+        .from(purchaseOrders)
+        .where(inArray(purchaseOrders.status, myPoStatuses));
+      pendingPoTasks = poTasks.length;
+    }
+
     return NextResponse.json({
       pendingApprovals: myApprovals.length,
       pendingSppLoans,
       pendingSppPOs,
       pendingSppApprovals,
       totalSpp: pendingSppLoans + pendingSppPOs + pendingSppApprovals,
+      pendingPoTasks,
     });
   } catch (error) {
     console.error("Failed to fetch notifications:", error);

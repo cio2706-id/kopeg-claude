@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, numberToIndonesianWords } from "@/lib/utils";
 import {
   FileText,
   ArrowLeft,
@@ -22,6 +22,7 @@ interface PendingLoan {
   loanType: string;
   amount: string;
   memberName: string;
+  memberDepartment: string | null;
   coaCode: string;
 }
 
@@ -31,7 +32,9 @@ interface PendingPO {
   poNumber: string;
   description: string;
   totalAmount: string;
+  estimatedAmount: string | null;
   requesterName: string;
+  requesterDivisi: string | null;
   vendorName: string;
 }
 
@@ -120,6 +123,10 @@ function CreateSppPage() {
       const loan = pendingLoans.find((l) => l.id === selectedRefId);
       if (loan) {
         setPayableTo(loan.memberName || "");
+        // Use requester's department as unit kerja
+        if (loan.memberDepartment) {
+          setUnitKerja(loan.memberDepartment);
+        }
         setItems([{
           accountCode: loan.coaCode || "",
           description: `Pencairan Pinjaman ${loan.loanType.charAt(0).toUpperCase() + loan.loanType.slice(1)} - ${loan.trackingNumber} - ${loan.memberName}`,
@@ -130,16 +137,33 @@ function CreateSppPage() {
       const po = pendingPOs.find((p) => p.id === selectedRefId);
       if (po) {
         setPayableTo(po.vendorName || po.requesterName || "");
+        // Use requester's divisi as unit kerja
+        if (po.requesterDivisi) {
+          setUnitKerja(po.requesterDivisi);
+        }
+        // Use manager-approved price (totalAmount), fallback to estimatedAmount
+        const approvedPrice = Number(po.totalAmount || po.estimatedAmount || 0);
         setItems([{
           accountCode: "",
           description: `Pembayaran PO ${po.poNumber} - ${po.description}`,
-          amount: Number(po.totalAmount || 0),
+          amount: approvedPrice,
         }]);
       }
+    } else if (selectedRefType === "none") {
+      setUnitKerja("KOPERASI PEGAWAI BIRO KLASIFIKASI INDONESIA");
     }
   }, [selectedRefType, selectedRefId, pendingLoans, pendingPOs]);
 
   const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+
+  // Auto-fill Terbilang when totalAmount changes
+  useEffect(() => {
+    if (totalAmount > 0) {
+      setAmountInWords(numberToIndonesianWords(totalAmount));
+    } else {
+      setAmountInWords("");
+    }
+  }, [totalAmount]);
 
   function addItem() {
     setItems([...items, { accountCode: "", description: "", amount: 0 }]);
