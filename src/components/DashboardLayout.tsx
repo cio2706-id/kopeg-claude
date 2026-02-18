@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -29,6 +29,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   section?: string;
+  badgeKey?: string; // key to look up in notification counts
 }
 
 const memberNav: NavItem[] = [
@@ -45,10 +46,10 @@ const memberNav: NavItem[] = [
 const pengurusNav: NavItem[] = [
   { label: "Dashboard", href: "/pengurus/dashboard", icon: <LayoutDashboard className="w-5 h-5" />, section: "MENU" },
   { label: "Anggota", href: "/pengurus/members", icon: <Users className="w-5 h-5" /> },
-  { label: "Persetujuan", href: "/pengurus/approvals", icon: <CheckSquare className="w-5 h-5" /> },
+  { label: "Persetujuan", href: "/pengurus/approvals", icon: <CheckSquare className="w-5 h-5" />, badgeKey: "pendingApprovals" },
   { label: "Purchase Order", href: "/pengurus/po", icon: <ShoppingCart className="w-5 h-5" /> },
   { label: "Pinjaman", href: "/pengurus/loans", icon: <CreditCard className="w-5 h-5" /> },
-  { label: "SPP", href: "/pengurus/spp", icon: <FileText className="w-5 h-5" /> },
+  { label: "SPP", href: "/pengurus/spp", icon: <FileText className="w-5 h-5" />, badgeKey: "totalSpp" },
   { label: "Data Management", href: "/pengurus/data-management", icon: <Upload className="w-5 h-5" /> },
   { label: "Laporan", href: "/pengurus/reports", icon: <BarChart3 className="w-5 h-5" />, section: "GENERAL" },
   { label: "Pengaturan", href: "/pengurus/settings", icon: <Settings className="w-5 h-5" /> },
@@ -70,8 +71,30 @@ export default function DashboardLayout({
   onLogout,
 }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [badges, setBadges] = useState<Record<string, number>>({});
   const pathname = usePathname();
   const navItems = variant === "pengurus" ? pengurusNav : memberNav;
+
+  // Fetch notification counts for pengurus
+  useEffect(() => {
+    if (variant !== "pengurus") return;
+    let cancelled = false;
+    async function fetchNotifications() {
+      try {
+        const res = await fetch("/api/notifications");
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setBadges(data);
+        }
+      } catch {
+        // Silently ignore
+      }
+    }
+    fetchNotifications();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [variant]);
 
   return (
     <div className="min-h-screen bg-[#f0f0f0]">
@@ -121,7 +144,16 @@ export default function DashboardLayout({
                   }`}
                 >
                   {item.icon}
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.badgeKey && badges[item.badgeKey] > 0 && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
+                      isActive
+                        ? "bg-white/25 text-white"
+                        : "bg-teal-500 text-white"
+                    }`}>
+                      {badges[item.badgeKey]}
+                    </span>
+                  )}
                 </Link>
               </div>
             );
@@ -174,6 +206,11 @@ export default function DashboardLayout({
               </button>
               <button className="p-2 rounded-lg hover:bg-gray-100 transition relative">
                 <Bell className="w-5 h-5 text-gray-500" />
+                {(badges.pendingApprovals > 0 || badges.totalSpp > 0) && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white">
+                    {(badges.pendingApprovals || 0) + (badges.totalSpp || 0)}
+                  </span>
+                )}
               </button>
               <div className="flex items-center gap-2.5 ml-2">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-bold text-sm">

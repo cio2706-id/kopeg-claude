@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { loans, purchaseOrders, users } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, inArray } from "drizzle-orm";
 
 /**
  * GET: Fetch loans and POs that are ready for SPP creation.
- * - Loans with status "spp_process" and no sppId linked
+ * - Loans with status "approved" or "spp_process" and no sppId linked
  * - POs with status "approved_rab" and no sppId linked
  */
 export async function GET() {
@@ -19,7 +19,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Loans ready for SPP (status = spp_process, no SPP linked yet)
+    // Loans ready for SPP (status = approved or spp_process, no SPP linked yet)
     const pendingLoans = await db
       .select({
         id: loans.id,
@@ -30,14 +30,15 @@ export async function GET() {
         userId: loans.userId,
         memberName: users.fullName,
         coaCode: loans.coaCode,
+        sppId: loans.sppId,
         createdAt: loans.createdAt,
       })
       .from(loans)
       .leftJoin(users, eq(loans.userId, users.id))
-      .where(eq(loans.status, "spp_process"));
+      .where(inArray(loans.status, ["approved", "spp_process"]));
 
     // Filter only loans without SPP linked
-    const loansWithoutSpp = pendingLoans.filter((l) => true); // sppId check done via join later if needed
+    const loansWithoutSpp = pendingLoans.filter((l) => !l.sppId);
 
     // POs ready for SPP (status = approved_rab, no SPP linked yet)
     const pendingPOs = await db

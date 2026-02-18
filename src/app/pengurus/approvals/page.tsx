@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ROLE_LABELS, LOAN_TYPE_LABELS, LOAN_STATUS_LABELS, formatCurrency } from "@/lib/utils";
-import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle } from "lucide-react";
+import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle, Download, Eye } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +57,8 @@ interface LoanData {
   trackingNumber: string;
   creditScore: string | null;
   createdAt: string;
+  documentUrls?: string[] | null;
+  formData?: Record<string, unknown> | null;
 }
 
 interface LoanDetail {
@@ -65,6 +67,7 @@ interface LoanDetail {
   activeLoans: LoanData[];
   pendingRequests: LoanData[];
   approvalSteps: ApprovalStep[];
+  loanBalances?: { loanType: string; saldo: string }[];
 }
 
 type FilterTab = "all" | "loan" | "purchase_order";
@@ -369,9 +372,15 @@ export default function PengurusApprovalsPage() {
       );
     }
 
-    const { loan, requester, activeLoans, pendingRequests, approvalSteps } = detail;
+    const { loan, requester, activeLoans, pendingRequests, approvalSteps, loanBalances: importedBalances } = detail;
     const activeLoansTotal = activeLoans.reduce(
       (sum, l) => sum + parseFloat(l.amount),
+      0
+    );
+
+    // Calculate imported loan balance total
+    const importedBalanceTotal = (importedBalances || []).reduce(
+      (sum, lb) => sum + parseFloat(lb.saldo || "0"),
       0
     );
 
@@ -424,6 +433,47 @@ export default function PengurusApprovalsPage() {
           )}
         </div>
 
+        {/* Dokumen Pendukung */}
+        {loan.documentUrls && loan.documentUrls.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              Dokumen Pendukung
+            </h4>
+            <div className="space-y-2">
+              {loan.documentUrls.map((url, idx) => {
+                const fileName = url.split("/").pop() || `Dokumen ${idx + 1}`;
+                const isImage = /\.(jpg|jpeg|png|webp)$/i.test(url);
+                return (
+                  <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="text-xs text-gray-700 flex-1 truncate">{fileName}</span>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 px-2 py-1 rounded-lg hover:bg-teal-50 transition"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Lihat
+                    </a>
+                    <a
+                      href={url}
+                      download
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50 transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Unduh
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Requester Info */}
         <div className="mt-5 pt-5 border-t border-gray-100">
           <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -451,7 +501,31 @@ export default function PengurusApprovalsPage() {
             </div>
             <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
               <span className="text-xs text-gray-500">
-                Pinjaman aktif lainnya
+                Saldo Pinjaman (Data Impor)
+              </span>
+              <span className="text-xs font-medium text-gray-900">
+                {importedBalanceTotal > 0
+                  ? formatCurrency(importedBalanceTotal)
+                  : "Tidak ada data"}
+              </span>
+            </div>
+            {importedBalances && importedBalances.length > 0 && (
+              <div className="pl-3 space-y-1">
+                {importedBalances.filter(lb => parseFloat(lb.saldo || "0") > 0).map((lb, idx) => (
+                  <div key={idx} className="flex justify-between">
+                    <span className="text-[11px] text-gray-400 capitalize">
+                      {lb.loanType.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      {formatCurrency(parseFloat(lb.saldo || "0"))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">
+                Pinjaman aktif (app)
               </span>
               <span className="text-xs font-medium text-gray-900">
                 {activeLoans.length} pinjaman

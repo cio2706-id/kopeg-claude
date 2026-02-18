@@ -154,6 +154,7 @@ export default function LoanApplicationPage() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
+  const [loanBalanceTotal, setLoanBalanceTotal] = useState<number>(0);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -166,6 +167,22 @@ export default function LoanApplicationPage() {
     setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "User");
     setUserEmail(user.email || "");
     setAuthLoading(false);
+
+    // Fetch loan balances to auto-fill "Sisa Pinjaman Yang Lalu"
+    try {
+      const res = await fetch("/api/member-balances");
+      if (res.ok) {
+        const data = await res.json();
+        const total = data.pinjaman?.total || 0;
+        setLoanBalanceTotal(total);
+        if (total > 0) {
+          setPreviousBalance(total.toString());
+          setBarangPreviousBalance(total.toString());
+        }
+      }
+    } catch {
+      // Silently ignore - balance fields remain editable
+    }
   }, [router, supabase]);
 
   useEffect(() => {
@@ -675,10 +692,14 @@ export default function LoanApplicationPage() {
                     type="number"
                     value={previousBalance}
                     onChange={(e) => setPreviousBalance(e.target.value)}
+                    readOnly={loanBalanceTotal > 0}
                     min="0"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                    className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm transition-all outline-none ${loanBalanceTotal > 0 ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white"}`}
                     placeholder="0"
                   />
+                  {loanBalanceTotal > 0 && (
+                    <p className="text-xs text-teal-600 mt-1">Otomatis dari saldo pinjaman Anda</p>
+                  )}
                 </div>
               </div>
 
@@ -957,10 +978,14 @@ export default function LoanApplicationPage() {
                     type="number"
                     value={barangPreviousBalance}
                     onChange={(e) => setBarangPreviousBalance(e.target.value)}
+                    readOnly={loanBalanceTotal > 0}
                     min="0"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm transition-all outline-none ${loanBalanceTotal > 0 ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white"}`}
                     placeholder="0"
                   />
+                  {loanBalanceTotal > 0 && (
+                    <p className="text-xs text-purple-600 mt-1">Otomatis dari saldo pinjaman Anda</p>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Keterangan Lain-lain</label>
