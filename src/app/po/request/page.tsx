@@ -30,9 +30,30 @@ export default function PoRequestPage() {
   const supabase = createSupabaseBrowserClient();
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setIsLoggedIn(true);
-    });
+    async function loadUserProfile() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setIsLoggedIn(true);
+
+      // Fetch user profile from DB to auto-fill identity fields
+      try {
+        const res = await fetch("/api/users");
+        if (res.ok) {
+          const data = await res.json();
+          const me = (data.users || []).find(
+            (u: { email?: string }) => u.email?.toLowerCase() === user.email?.toLowerCase()
+          );
+          if (me) {
+            if (me.fullName) setRequesterName(me.fullName);
+            if (me.department) setRequesterDivisi(me.department);
+            if (me.employeeId) setRequesterNip(me.employeeId);
+          }
+        }
+      } catch {
+        // Silently ignore — fields remain editable
+      }
+    }
+    loadUserProfile();
   }, [supabase]);
 
   function addItem() {

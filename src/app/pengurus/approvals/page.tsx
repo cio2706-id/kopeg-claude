@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ROLE_LABELS, LOAN_TYPE_LABELS, LOAN_STATUS_LABELS, formatCurrency } from "@/lib/utils";
-import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle, Download, Eye } from "lucide-react";
+import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle, Download, Eye, Edit3 } from "lucide-react";
+import { PO_STATUS_LABELS } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,38 @@ interface LoanDetail {
   loanBalances?: { loanType: string; saldo: string }[];
 }
 
+interface PoItemData {
+  id: string;
+  itemName: string;
+  description: string | null;
+  quantity: number;
+  unit: string | null;
+  unitPrice: string;
+  totalPrice: string;
+}
+
+interface PoData {
+  id: string;
+  trackingNumber: string;
+  poNumber: string;
+  description: string;
+  status: string;
+  estimatedAmount: string | null;
+  totalAmount: string | null;
+  requesterName: string | null;
+  requesterDivisi: string | null;
+  requesterNip: string | null;
+  vendorName: string | null;
+  documentUrls: string[] | null;
+  adjustmentNotes: string | null;
+  createdAt: string;
+}
+
+interface PoDetail {
+  purchaseOrder: PoData;
+  items: PoItemData[];
+}
+
 type FilterTab = "all" | "loan" | "purchase_order";
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -84,9 +117,13 @@ export default function PengurusApprovalsPage() {
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
   const [loanDetails, setLoanDetails] = useState<Record<string, LoanDetail>>({});
   const [loanDetailLoading, setLoanDetailLoading] = useState<Record<string, boolean>>({});
+  const [poDetails, setPoDetails] = useState<Record<string, PoDetail>>({});
+  const [poDetailLoading, setPoDetailLoading] = useState<Record<string, boolean>>({});
   const [userDbRole, setUserDbRole] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [managerNewPrice, setManagerNewPrice] = useState<Record<string, string>>({});
+  const [managerPriceNotes, setManagerPriceNotes] = useState<Record<string, string>>({});
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -155,6 +192,25 @@ export default function PengurusApprovalsPage() {
     }
   }, [loanDetails, loanDetailLoading]);
 
+  // ─── PO Detail Fetching ─────────────────────────────────────────────────
+
+  const fetchPoDetail = useCallback(async (referenceId: string) => {
+    if (poDetails[referenceId] || poDetailLoading[referenceId]) return;
+
+    setPoDetailLoading((prev) => ({ ...prev, [referenceId]: true }));
+    try {
+      const res = await fetch(`/api/purchase-orders/${referenceId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPoDetails((prev) => ({ ...prev, [referenceId]: data }));
+      }
+    } catch (error) {
+      console.error("Failed to fetch PO detail:", error);
+    } finally {
+      setPoDetailLoading((prev) => ({ ...prev, [referenceId]: false }));
+    }
+  }, [poDetails, poDetailLoading]);
+
   // ─── Card Expansion ────────────────────────────────────────────────────
 
   function handleCardClick(approval: Approval) {
@@ -169,9 +225,11 @@ export default function PengurusApprovalsPage() {
     setRejectingId(null);
     setRejectReason("");
 
-    // Fetch loan detail when expanding a loan approval
+    // Fetch detail when expanding
     if (approval.referenceType === "loan") {
       fetchLoanDetail(approval.referenceId);
+    } else if (approval.referenceType === "purchase_order") {
+      fetchPoDetail(approval.referenceId);
     }
   }
 
@@ -182,18 +240,23 @@ export default function PengurusApprovalsPage() {
     router.push("/pengurus/login");
   }
 
-  async function handleApprove(approvalId: string) {
+  async function handleApprove(approvalId: string, extra?: { totalAmount?: number; adjustmentNotes?: string }) {
     setActionLoading(approvalId);
     try {
+      const body: Record<string, unknown> = { approvalId, action: "approve" };
+      if (extra?.totalAmount) body.totalAmount = extra.totalAmount;
+      if (extra?.adjustmentNotes) body.adjustmentNotes = extra.adjustmentNotes;
+
       const res = await fetch("/api/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalId, action: "approve" }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         setSelectedApprovalId(null);
-        // Clear cached loan details so they refresh
+        // Clear cached details so they refresh
         setLoanDetails({});
+        setPoDetails({});
         loadData();
       }
     } catch (error) {
@@ -641,23 +704,199 @@ export default function PengurusApprovalsPage() {
   }
 
   function renderPOExpandedDetail(approval: Approval) {
+    const detail = poDetails[approval.referenceId];
+    const isLoading = poDetailLoading[approval.referenceId];
     const canAct = userDbRole === approval.approverRole;
     const isRejecting = rejectingId === approval.id;
+    const isManagerStep = approval.approverRole === "manager";
+
+    if (isLoading) {
+      return (
+        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-center py-8">
+          <div className="flex flex-col items-center gap-2">
+            <div className="animate-spin w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full" />
+            <p className="text-xs text-gray-400">Memuat detail PO...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!detail) {
+      return (
+        <div className="mt-4 pt-4 border-t border-gray-100 text-center py-6">
+          <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-xs text-gray-400">Gagal memuat detail PO.</p>
+        </div>
+      );
+    }
+
+    const { purchaseOrder: po, items } = detail;
+    const itemsTotal = items.reduce((sum, item) => sum + parseFloat(item.totalPrice || "0"), 0);
 
     return (
       <div className="mt-4 pt-4 border-t border-gray-100">
-        <div className="bg-gray-50 rounded-xl p-4 text-center">
-          <ShoppingCart className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <p className="text-xs text-gray-500">
-            Purchase Order #{approval.referenceId.slice(0, 8)}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Step {approval.stepOrder} &mdash;{" "}
-            {approval.stepLabel ||
-              ROLE_LABELS[approval.approverRole] ||
-              approval.approverRole}
-          </p>
+        {/* PO Header Info */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Nomor PO</p>
+            <p className="text-sm font-mono font-medium text-gray-900 mt-0.5">{po.poNumber}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Status</p>
+            <p className="text-sm font-medium text-gray-900 mt-0.5">{PO_STATUS_LABELS[po.status] || po.status}</p>
+          </div>
+          <div className="col-span-2">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Deskripsi</p>
+            <p className="text-sm text-gray-700 mt-0.5">{po.description}</p>
+          </div>
+          {po.estimatedAmount && (
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estimasi</p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{formatCurrency(Number(po.estimatedAmount))}</p>
+            </div>
+          )}
+          {po.totalAmount && (
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total RAB</p>
+              <p className="text-sm font-bold text-teal-600 mt-0.5">{formatCurrency(Number(po.totalAmount))}</p>
+            </div>
+          )}
         </div>
+
+        {/* Requester Info */}
+        <div className="mt-5 pt-5 border-t border-gray-100">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <User className="w-3.5 h-3.5" />
+            Identitas Pemohon
+          </h4>
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Nama</span>
+              <span className="text-xs font-medium text-gray-900">{po.requesterName || "-"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Divisi</span>
+              <span className="text-xs font-medium text-gray-900">{po.requesterDivisi || "-"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">NIP</span>
+              <span className="text-xs font-medium text-gray-900">{po.requesterNip || "-"}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Item Details */}
+        {items.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Detail Barang ({items.length} item)
+            </h4>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={item.id || idx} className="bg-gray-50 rounded-xl p-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{item.itemName}</p>
+                      {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
+                      <p className="text-xs text-gray-400 mt-1">
+                        {item.quantity} {item.unit || "pcs"} x {formatCurrency(Number(item.unitPrice))}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700">{formatCurrency(Number(item.totalPrice))}</p>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs font-semibold text-gray-500">TOTAL ITEM</span>
+                <span className="text-sm font-bold text-gray-900">{formatCurrency(itemsTotal)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Document Files */}
+        {po.documentUrls && po.documentUrls.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              Dokumen Pendukung
+            </h4>
+            <div className="space-y-2">
+              {po.documentUrls.map((url, idx) => {
+                const fileName = url.split("/").pop() || `Dokumen ${idx + 1}`;
+                return (
+                  <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+                    <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <span className="text-xs text-gray-700 flex-1 truncate">{fileName}</span>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 px-2 py-1 rounded-lg hover:bg-teal-50 transition"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Lihat
+                    </a>
+                    <a
+                      href={url}
+                      download
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-50 transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Unduh
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Manager Price Edit */}
+        {canAct && isManagerStep && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Edit3 className="w-3.5 h-3.5" />
+              Penyesuaian Harga (Opsional)
+            </h4>
+            <div className="bg-blue-50 rounded-xl p-4 space-y-3">
+              <p className="text-xs text-blue-700">
+                Anda dapat menyesuaikan total harga sebelum menyetujui. Harga lama akan tersimpan sebagai estimasi.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Harga Baru (Rp)</label>
+                <input
+                  type="number"
+                  value={managerNewPrice[approval.id] || ""}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setManagerNewPrice((prev) => ({ ...prev, [approval.id]: e.target.value }));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder={po.totalAmount ? Number(po.totalAmount).toString() : po.estimatedAmount ? Number(po.estimatedAmount).toString() : "0"}
+                  min="0"
+                  className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Catatan Penyesuaian</label>
+                <input
+                  type="text"
+                  value={managerPriceNotes[approval.id] || ""}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setManagerPriceNotes((prev) => ({ ...prev, [approval.id]: e.target.value }));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder="Alasan perubahan harga (opsional)"
+                  className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="mt-5 pt-5 border-t border-gray-100">
@@ -668,7 +907,9 @@ export default function PengurusApprovalsPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleApprove(approval.id);
+                      const newPrice = managerNewPrice[approval.id] ? parseFloat(managerNewPrice[approval.id]) : undefined;
+                      const notes = managerPriceNotes[approval.id] || undefined;
+                      handleApprove(approval.id, isManagerStep && newPrice ? { totalAmount: newPrice, adjustmentNotes: notes } : undefined);
                     }}
                     disabled={actionLoading === approval.id}
                     className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
@@ -837,6 +1078,7 @@ export default function PengurusApprovalsPage() {
             const isLoan = approval.referenceType === "loan";
             const isExpanded = selectedApprovalId === approval.id;
             const detail = loanDetails[approval.referenceId];
+            const poDetail = poDetails[approval.referenceId];
             const canAct = userDbRole === approval.approverRole;
 
             return (
@@ -890,11 +1132,18 @@ export default function PengurusApprovalsPage() {
                       <div className="flex items-center gap-3 mt-1.5">
                         <p className="font-semibold text-gray-900 text-sm truncate">
                           {isLoan ? "Pinjaman" : "PO"} #
-                          {approval.referenceId.slice(0, 8)}
+                          {isLoan
+                            ? approval.referenceId.slice(0, 8)
+                            : poDetail?.purchaseOrder?.poNumber || approval.referenceId.slice(0, 8)}
                         </p>
                         {isLoan && detail?.loan && (
                           <p className="text-sm font-bold text-teal-600">
                             {formatCurrency(Number(detail.loan.amount))}
+                          </p>
+                        )}
+                        {!isLoan && poDetail?.purchaseOrder && (
+                          <p className="text-sm font-bold text-gray-700">
+                            {formatCurrency(Number(poDetail.purchaseOrder.totalAmount || poDetail.purchaseOrder.estimatedAmount || 0))}
                           </p>
                         )}
                       </div>
@@ -908,6 +1157,14 @@ export default function PengurusApprovalsPage() {
                           Pemohon:{" "}
                           <span className="font-medium text-gray-700">
                             {detail.requester.fullName}
+                          </span>
+                        </p>
+                      )}
+                      {!isLoan && poDetail?.purchaseOrder?.requesterName && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Pemohon:{" "}
+                          <span className="font-medium text-gray-700">
+                            {poDetail.purchaseOrder.requesterName}
                           </span>
                         </p>
                       )}

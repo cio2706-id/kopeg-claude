@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -15,6 +15,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { formatCurrency, PO_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface PurchaseOrder {
   id: string;
@@ -65,6 +66,14 @@ export default function PoTrackPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const supabase = createSupabaseBrowserClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setIsLoggedIn(true);
+    });
+  }, [supabase]);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -113,11 +122,11 @@ export default function PoTrackPage() {
             <span className="font-bold text-lg">KopegBKI</span>
           </div>
           <Link
-            href="/"
+            href={isLoggedIn ? "/member/dashboard" : "/"}
             className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Kembali ke Beranda
+            {isLoggedIn ? "Kembali ke Dashboard" : "Kembali ke Beranda"}
           </Link>
         </div>
       </header>

@@ -26,6 +26,9 @@ const approvalSchema = z.object({
   comments: z.string().optional(),
   creditAnalysis: z.string().optional(),
   creditScore: z.string().optional(),
+  // PO manager price adjustment
+  totalAmount: z.number().positive().optional(),
+  adjustmentNotes: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -196,9 +199,23 @@ export async function POST(request: NextRequest) {
               .where(eq(purchaseOrders.id, po.id));
           } else if (dbUser.role === "manager") {
             // Manager approved RAB → move to approved_rab (Staf Treasury takes over)
+            const updateData: Record<string, unknown> = {
+              status: "approved_rab",
+              updatedAt: new Date(),
+            };
+
+            // Manager can adjust the price before approving
+            if (parsed.data.totalAmount) {
+              updateData.totalAmount = parsed.data.totalAmount.toString();
+              updateData.adjustedBy = dbUser.id;
+              if (parsed.data.adjustmentNotes) {
+                updateData.adjustmentNotes = parsed.data.adjustmentNotes;
+              }
+            }
+
             await db
               .update(purchaseOrders)
-              .set({ status: "approved_rab", updatedAt: new Date() })
+              .set(updateData)
               .where(eq(purchaseOrders.id, po.id));
           }
         }
