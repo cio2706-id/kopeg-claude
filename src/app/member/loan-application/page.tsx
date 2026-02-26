@@ -1018,7 +1018,7 @@ export default function LoanApplicationPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white/10 rounded-xl p-4">
-                    <p className="text-xs text-teal-200 mb-1">Pokok Pinjaman</p>
+                    <p className="text-xs text-teal-200 mb-1">Pagu Pinjaman</p>
                     <p className="font-bold text-lg">{formatCurrency(parseFloat(amount))}</p>
                   </div>
                   <div className="bg-white/10 rounded-xl p-4">
@@ -1033,6 +1033,32 @@ export default function LoanApplicationPage() {
                     <p className="text-xs text-teal-200 mb-1">Total Pengembalian</p>
                     <p className="font-bold text-lg">{formatCurrency(totalRepayment)}</p>
                   </div>
+                </div>
+
+                {/* ── Biaya-biaya ── */}
+                <div className="mt-4 border-t border-white/20 pt-4">
+                  <h3 className="text-sm font-semibold text-teal-100 mb-3">Biaya-biaya</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-teal-200">Biaya Administrasi (1%)</span>
+                      <span className="font-semibold">{formatCurrency(parseFloat(amount) * 0.01)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-teal-200">Simpanan Khusus (1%)</span>
+                      <span className="font-semibold">{formatCurrency(parseFloat(amount) * 0.01)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-white/20 pt-2">
+                      <span className="text-teal-100 font-medium">Total Potongan</span>
+                      <span className="font-bold">{formatCurrency(parseFloat(amount) * 0.02)}</span>
+                    </div>
+                    <div className="flex justify-between bg-white/10 rounded-lg px-3 py-2 -mx-1">
+                      <span className="text-white font-medium">Dana Diterima</span>
+                      <span className="font-bold text-lg">{formatCurrency(parseFloat(amount) * 0.98)}</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-teal-300 mt-2">
+                    * Biaya administrasi dipotong 1% dan Simpanan Khusus 1% dari Pagu Pinjaman
+                  </p>
                 </div>
               </div>
             </div>

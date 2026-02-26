@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { loans, approvals, users, loanBalances } from "@/lib/db/schema";
+import { loans, approvals, users, loanBalances, loanInstallments } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { eq, and, ne, notInArray } from "drizzle-orm";
@@ -132,6 +132,13 @@ export async function GET(
       .from(loanBalances)
       .where(eq(loanBalances.userId, loan.userId));
 
+    // 7. Fetch installment schedule (kartu pinjaman)
+    const installments = await db
+      .select()
+      .from(loanInstallments)
+      .where(eq(loanInstallments.loanId, id))
+      .orderBy(loanInstallments.installmentNumber);
+
     return NextResponse.json({
       loan,
       requester,
@@ -139,6 +146,7 @@ export async function GET(
       pendingRequests,
       approvalSteps,
       loanBalances: importedBalances,
+      installments,
     });
   } catch (error) {
     console.error("Failed to fetch loan detail:", error);

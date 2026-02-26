@@ -310,6 +310,24 @@ export const sppItems = pgTable("spp_items", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Loan Installments (Kartu Pinjaman) ────────────────────────────────────
+
+export const loanInstallments = pgTable("loan_installments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  loanId: uuid("loan_id")
+    .references(() => loans.id)
+    .notNull(),
+  installmentNumber: integer("installment_number").notNull(), // 1-N for monthly installments
+  dueDate: timestamp("due_date"),
+  principalAmount: numeric("principal_amount", { precision: 15, scale: 2 }).default("0"),
+  interestAmount: numeric("interest_amount", { precision: 15, scale: 2 }).default("0"),
+  totalAmount: numeric("total_amount", { precision: 15, scale: 2 }).notNull(),
+  remainingBalance: numeric("remaining_balance", { precision: 15, scale: 2 }).notNull(),
+  description: text("description"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ─── Loan Balances (Imported from kertas kerja) ────────────────────────────
 
 export const loanBalances = pgTable("loan_balances", {
@@ -394,5 +412,6 @@ export type Spp = typeof spp.$inferSelect;
 export type NewSpp = typeof spp.$inferInsert;
 export type SppItem = typeof sppItems.$inferSelect;
 export type LoanBalance = typeof loanBalances.$inferSelect;
+export type LoanInstallment = typeof loanInstallments.$inferSelect;
 export type MonthlyDeduction = typeof monthlyDeductions.$inferSelect;
 export type UploadLog = typeof uploadLogs.$inferSelect;

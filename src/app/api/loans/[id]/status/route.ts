@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { loans } from "@/lib/db/schema";
+import { loans, loanInstallments, loanBalances, savings } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { generateInstallmentSchedule } from "@/lib/utils";
 
 /**
  * PATCH: Update loan status for post-SPP workflow steps.
  * Role-restricted transitions:
  *   bank_process → disbursed (staf_treasury only)
+ *
+ * On disbursement:
+ *   - Auto-generate installment schedule (kartu pinjaman)
+ *   - Auto-update loan balance (saldo pinjaman)
+ *   - Deduct 1% admin fee, add 1% to simpanan khusus
  */
 const statusUpdateSchema = z.object({
   status: z.enum(["bank_process", "disbursed"]),
@@ -74,8 +80,10 @@ export async function PATCH(
       updateData.bankPortalRef = parsed.data.bankPortalRef;
     }
 
+    const now = new Date();
+
     if (parsed.data.status === "disbursed") {
-      updateData.disbursedAt = new Date();
+      updateData.disbursedAt = now;
     }
 
     const [updated] = await db
@@ -83,6 +91,85 @@ export async function PATCH(
       .set(updateData)
       .where(eq(loans.id, id))
       .returning();
+
+    // ── On disbursement: auto-generate installments + update saldo ──
+    if (parsed.data.status === "disbursed") {
+      const loanAmount = parseFloat(loan.amount);
+      const annualRate = parseFloat(loan.interestRate);
+      const tenorMonths = loan.tenorMonths;
+      const loanType = loan.loanType;
+
+      // 1. Generate installment schedule (kartu pinjaman)
+      const schedule = generateInstallmentSchedule(loanAmount, annualRate, tenorMonths, now);
+      if (schedule.length > 0) {
+        await db.insert(loanInstallments).values(
+          schedule.map((row) => ({
+            loanId: id,
+            installmentNumber: row.installmentNumber,
+            dueDate: row.dueDate,
+            principalAmount: row.principalAmount.toString(),
+            interestAmount: row.interestAmount.toString(),
+            totalAmount: row.totalAmount.toString(),
+            remainingBalance: row.remainingBalance.toString(),
+            description: row.description,
+          }))
+        );
+      }
+
+      // 2. Auto-update loan balance (saldo pinjaman) for the member
+      const period = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+      const existingBalance = await db
+        .select()
+        .from(loanBalances)
+        .where(
+          and(
+            eq(loanBalances.userId, loan.userId),
+            eq(loanBalances.loanType, loanType),
+            eq(loanBalances.period, period)
+          )
+        );
+
+      const currentSaldo = existingBalance.length > 0
+        ? parseFloat(existingBalance[0].saldo || "0")
+        : 0;
+      const newSaldo = currentSaldo + loanAmount;
+
+      if (existingBalance.length > 0) {
+        await db
+          .update(loanBalances)
+          .set({ saldo: newSaldo.toString(), updatedAt: now })
+          .where(eq(loanBalances.id, existingBalance[0].id));
+      } else {
+        await db.insert(loanBalances).values({
+          userId: loan.userId,
+          loanType,
+          period,
+          saldo: newSaldo.toString(),
+          uploadBatchId: `auto-disbursement-${id}`,
+        });
+      }
+
+      // 3. Add 1% simpanan khusus to member's savings
+      const simpananKhususAmount = Math.round(loanAmount * 0.01);
+      const existingSavings = await db
+        .select()
+        .from(savings)
+        .where(eq(savings.userId, loan.userId))
+        .limit(1);
+
+      if (existingSavings.length > 0) {
+        const currentSK = parseFloat(existingSavings[0].simpananKhusus || "0");
+        const currentTotal = parseFloat(existingSavings[0].totalBalance || "0");
+        await db
+          .update(savings)
+          .set({
+            simpananKhusus: (currentSK + simpananKhususAmount).toString(),
+            totalBalance: (currentTotal + simpananKhususAmount).toString(),
+            updatedAt: now,
+          })
+          .where(eq(savings.id, existingSavings[0].id));
+      }
+    }
 
     return NextResponse.json({ loan: updated });
   } catch (error) {

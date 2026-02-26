@@ -132,6 +132,58 @@ export const PO_APPROVAL_STEPS = [
 
 // ─── Number to Indonesian Words ────────────────────────────────────────────
 
+// ─── Installment Schedule Generation (Kartu Pinjaman) ─────────────────────
+
+export interface InstallmentRow {
+  installmentNumber: number;
+  dueDate: Date;
+  principalAmount: number;
+  interestAmount: number;
+  totalAmount: number;
+  remainingBalance: number;
+  description: string;
+}
+
+/**
+ * Generate flat-interest installment schedule (matching koperasi Excel format).
+ * - Pokok per bulan = principal / tenorMonths
+ * - Bunga per bulan = principal * (annualRate / 100 / 12) [flat]
+ * - Sisa pokok decreases by pokok each month
+ */
+export function generateInstallmentSchedule(
+  principal: number,
+  annualRate: number,
+  tenorMonths: number,
+  disbursementDate: Date
+): InstallmentRow[] {
+  const monthlyPrincipal = principal / tenorMonths;
+  const monthlyInterest = principal * (annualRate / 100 / 12);
+  const rows: InstallmentRow[] = [];
+  let remaining = principal;
+
+  for (let i = 1; i <= tenorMonths; i++) {
+    remaining = remaining - monthlyPrincipal;
+    if (remaining < 0.01) remaining = 0; // avoid floating point dust
+
+    const dueDate = new Date(disbursementDate);
+    dueDate.setMonth(dueDate.getMonth() + i);
+
+    rows.push({
+      installmentNumber: i,
+      dueDate,
+      principalAmount: Math.round(monthlyPrincipal),
+      interestAmount: Math.round(monthlyInterest),
+      totalAmount: Math.round(monthlyPrincipal + monthlyInterest),
+      remainingBalance: Math.round(remaining),
+      description: `Angsuran Ke-${i}`,
+    });
+  }
+
+  return rows;
+}
+
+// ─── Number to Indonesian Words ────────────────────────────────────────────
+
 const SATUAN = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan"];
 
 function ratusan(n: number): string {

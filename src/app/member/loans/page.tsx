@@ -3,7 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { CreditCard, Plus, FileDown } from "lucide-react";
+import {
+  CreditCard,
+  Plus,
+  FileDown,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Receipt,
+  Calendar,
+  Percent,
+  Banknote,
+} from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
@@ -21,10 +32,12 @@ interface Loan {
   trackingNumber: string;
   loanType: string;
   amount: string;
+  interestRate: string;
   status: string;
   tenorMonths: number;
   monthlyInstallment: string;
   purpose: string;
+  disbursedAt: string | null;
   createdAt: string;
 }
 
@@ -37,6 +50,7 @@ export default function LoansPage() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -106,6 +120,10 @@ export default function LoansPage() {
 
   function canDownloadForm(loan: Loan): boolean {
     return loan.loanType !== "channeling" && loan.loanType !== "travel";
+  }
+
+  function hasKartuPinjaman(loan: Loan): boolean {
+    return ["disbursed", "selesai", "bank_process"].includes(loan.status);
   }
 
   /* ---- loading state ---- */
@@ -181,98 +199,188 @@ export default function LoansPage() {
       </div>
 
       {/* ============================================================ */}
-      {/*  Loans table                                                  */}
+      {/*  Loans list                                                   */}
       {/* ============================================================ */}
-      <div className="bg-white rounded-2xl shadow-sm p-6">
-        <h2 className="font-semibold text-gray-900 text-sm mb-4">
+      <div className="space-y-4">
+        <h2 className="font-semibold text-gray-900 text-sm">
           Daftar Pinjaman
         </h2>
 
         {sortedLoans.length === 0 ? (
-          <div className="py-12 text-center">
-            <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-400 text-sm mb-4">
-              Belum ada pinjaman.
-            </p>
-            <Link
-              href="/member/loan-application"
-              className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-700 text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Ajukan Pinjaman Baru
-            </Link>
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <div className="py-12 text-center">
+              <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-400 text-sm mb-4">
+                Belum ada pinjaman.
+              </p>
+              <Link
+                href="/member/loan-application"
+                className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-700 text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Ajukan Pinjaman Baru
+              </Link>
+            </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-400 uppercase tracking-wide text-xs border-b border-gray-100">
-                  <th className="pb-3 font-medium">Tracking</th>
-                  <th className="pb-3 font-medium">Jenis</th>
-                  <th className="pb-3 font-medium text-right">Jumlah</th>
-                  <th className="pb-3 font-medium text-center">Tenor</th>
-                  <th className="pb-3 font-medium text-right">Angsuran/bln</th>
-                  <th className="pb-3 font-medium text-center">Status</th>
-                  <th className="pb-3 font-medium">Tanggal</th>
-                  <th className="pb-3 font-medium text-center">Formulir</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedLoans.map((loan) => (
-                  <tr
-                    key={loan.id}
-                    className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition"
-                  >
-                    <td className="py-3 font-mono text-xs text-teal-600 font-medium">
-                      {loan.trackingNumber}
-                    </td>
-                    <td className="py-3 text-gray-900 font-medium whitespace-nowrap">
-                      {LOAN_TYPE_LABELS[loan.loanType] || loan.loanType}
-                    </td>
-                    <td className="py-3 text-right text-gray-900 font-semibold whitespace-nowrap">
-                      {formatCurrency(loan.amount)}
-                    </td>
-                    <td className="py-3 text-center text-gray-700">
-                      {loan.tenorMonths} bln
-                    </td>
-                    <td className="py-3 text-right text-gray-700 whitespace-nowrap">
-                      {formatCurrency(loan.monthlyInstallment)}
-                    </td>
-                    <td className="py-3 text-center">
+          sortedLoans.map((loan) => {
+            const isExpanded = expandedId === loan.id;
+            const adminFee = parseFloat(loan.amount) * 0.01;
+            const simpananKhusus = parseFloat(loan.amount) * 0.01;
+            const netAmount = parseFloat(loan.amount) - adminFee - simpananKhusus;
+
+            return (
+              <div
+                key={loan.id}
+                className="bg-white rounded-2xl shadow-sm overflow-hidden"
+              >
+                {/* ── Card header (always visible) ── */}
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : loan.id)}
+                  className="w-full text-left px-6 py-4 flex items-center gap-4 hover:bg-gray-50 transition"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-xs text-teal-600 font-medium">
+                        {loan.trackingNumber}
+                      </span>
                       <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${statusBadgeClass(
-                          loan.status
-                        )}`}
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${statusBadgeClass(loan.status)}`}
                       >
                         {LOAN_STATUS_LABELS[loan.status] || loan.status}
                       </span>
-                    </td>
-                    <td className="py-3 text-gray-500 whitespace-nowrap">
+                    </div>
+                    <p className="font-semibold text-gray-900 text-sm">
+                      {LOAN_TYPE_LABELS[loan.loanType] || loan.loanType}
+                    </p>
+                    <p className="text-xs text-gray-500">
                       {new Date(loan.createdAt).toLocaleDateString("id-ID", {
                         day: "2-digit",
-                        month: "short",
+                        month: "long",
                         year: "numeric",
                       })}
-                    </td>
-                    <td className="py-3 text-center">
-                      {canDownloadForm(loan) ? (
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-gray-900">
+                      {formatCurrency(loan.amount)}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {loan.tenorMonths} bln &middot; {formatCurrency(loan.monthlyInstallment)}/bln
+                    </p>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />
+                  )}
+                </button>
+
+                {/* ── Expanded detail ── */}
+                {isExpanded && (
+                  <div className="px-6 pb-5 border-t border-gray-100 pt-4">
+                    {/* Detail grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+                      <div className="flex items-start gap-2">
+                        <Banknote className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-gray-400">Pagu Pinjaman</p>
+                          <p className="text-sm font-semibold text-gray-900">{formatCurrency(loan.amount)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Percent className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-gray-400">Suku Bunga</p>
+                          <p className="text-sm font-semibold text-gray-900">{loan.interestRate}% / tahun</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-gray-400">Tenor</p>
+                          <p className="text-sm font-semibold text-gray-900">{loan.tenorMonths} bulan</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Receipt className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-gray-400">Angsuran / Bulan</p>
+                          <p className="text-sm font-semibold text-gray-900">{formatCurrency(loan.monthlyInstallment)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Banknote className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[11px] text-gray-400">Total Pengembalian</p>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {formatCurrency(parseFloat(loan.monthlyInstallment) * loan.tenorMonths)}
+                          </p>
+                        </div>
+                      </div>
+                      {loan.disbursedAt && (
+                        <div className="flex items-start gap-2">
+                          <Calendar className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-[11px] text-gray-400">Tanggal Cair</p>
+                            <p className="text-sm font-semibold text-green-700">
+                              {new Date(loan.disbursedAt).toLocaleDateString("id-ID", {
+                                day: "2-digit",
+                                month: "long",
+                                year: "numeric",
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Biaya-biaya */}
+                    <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Biaya-biaya</h4>
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Biaya Administrasi (1%)</span>
+                          <span className="font-medium text-gray-900">{formatCurrency(adminFee)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Simpanan Khusus (1%)</span>
+                          <span className="font-medium text-gray-900">{formatCurrency(simpananKhusus)}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-gray-200 pt-1.5">
+                          <span className="text-gray-900 font-medium">Dana Diterima</span>
+                          <span className="font-bold text-teal-700">{formatCurrency(netAmount)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2">
+                      {hasKartuPinjaman(loan) && (
+                        <Link
+                          href={`/member/loans/${loan.id}/kartu`}
+                          className="inline-flex items-center gap-1.5 bg-teal-50 text-teal-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-teal-100 transition border border-teal-200"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          Kartu Pinjaman
+                        </Link>
+                      )}
+                      {canDownloadForm(loan) && (
                         <Link
                           href={`/member/loans/${loan.id}/print`}
                           target="_blank"
-                          className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-700 text-xs font-medium"
+                          className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-blue-100 transition border border-blue-200"
                         >
                           <FileDown className="w-3.5 h-3.5" />
-                          Download
+                          Download Formulir
                         </Link>
-                      ) : (
-                        <span className="text-gray-400 text-xs">-</span>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </DashboardLayout>
