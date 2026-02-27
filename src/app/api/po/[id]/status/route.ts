@@ -15,10 +15,10 @@ import { z } from "zod";
  *   procurement → delivery (staf_pengadaan)
  *   delivery → goods_received (staf_piutang)
  *   goods_received → goods_delivered (staf_piutang)
- *   goods_delivered → invoicing (staf_akunting)
+ *   goods_delivered → invoicing (staf_piutang) - requires invoice upload
  *   invoicing → waiting_payment (staf_akunting)
  *   waiting_payment → payment_received (staf_treasury)
- *   payment_received → completed (staf_akunting)
+ *   payment_received → completed (staf_akunting) - requires payment verification
  */
 const statusUpdateSchema = z.object({
   status: z.enum([
@@ -31,8 +31,10 @@ const statusUpdateSchema = z.object({
   receiptDocumentUrl: z.string().url().optional(),
   invoiceNumber: z.string().optional(),
   invoiceDate: z.string().optional(),
+  invoiceDocumentUrl: z.string().url().optional(),
   taxInvoiceNumber: z.string().optional(),
   paymentRef: z.string().optional(),
+  paymentVerified: z.boolean().optional(),
   notes: z.string().optional(),
 });
 
@@ -42,7 +44,7 @@ const ALLOWED_TRANSITIONS: Record<string, { nextStatuses: string[]; allowedRoles
   procurement: { nextStatuses: ["delivery"], allowedRoles: ["staf_pengadaan"] },
   delivery: { nextStatuses: ["goods_received"], allowedRoles: ["staf_piutang"] },
   goods_received: { nextStatuses: ["goods_delivered"], allowedRoles: ["staf_piutang"] },
-  goods_delivered: { nextStatuses: ["invoicing"], allowedRoles: ["staf_akunting"] },
+  goods_delivered: { nextStatuses: ["invoicing"], allowedRoles: ["staf_piutang"] },
   invoicing: { nextStatuses: ["waiting_payment"], allowedRoles: ["staf_akunting"] },
   waiting_payment: { nextStatuses: ["payment_received"], allowedRoles: ["staf_treasury"] },
   payment_received: { nextStatuses: ["completed"], allowedRoles: ["staf_akunting"] },
@@ -99,6 +101,14 @@ export async function PATCH(
       );
     }
 
+    // Require invoice upload for invoicing status
+    if (parsed.data.status === "invoicing" && !parsed.data.invoiceDocumentUrl && !parsed.data.invoiceNumber) {
+      return NextResponse.json(
+        { error: "Invoice dan lampiran wajib diupload sebelum proses invoice" },
+        { status: 400 }
+      );
+    }
+
     const updateData: Record<string, unknown> = {
       status: parsed.data.status,
       updatedAt: new Date(),
@@ -116,8 +126,11 @@ export async function PATCH(
       updateData.goodsDeliveredAt = new Date();
       updateData.receiptDocumentUrl = parsed.data.receiptDocumentUrl;
     }
+
+    // Invoice-related fields
     if (parsed.data.invoiceNumber) updateData.invoiceNumber = parsed.data.invoiceNumber;
     if (parsed.data.invoiceDate) updateData.invoiceDate = new Date(parsed.data.invoiceDate);
+    if (parsed.data.invoiceDocumentUrl) updateData.invoiceDocumentUrl = parsed.data.invoiceDocumentUrl;
     if (parsed.data.taxInvoiceNumber) updateData.taxInvoiceNumber = parsed.data.taxInvoiceNumber;
     if (parsed.data.paymentRef) updateData.paymentRef = parsed.data.paymentRef;
 

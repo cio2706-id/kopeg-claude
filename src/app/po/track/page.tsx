@@ -13,6 +13,8 @@ import {
   CreditCard,
   Building2,
   ArrowLeft,
+  Download,
+  Eye,
 } from "lucide-react";
 import { formatCurrency, PO_STATUS_LABELS, ROLE_LABELS } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -27,6 +29,8 @@ interface PurchaseOrder {
   totalAmount?: string;
   vendorName?: string;
   invoiceNumber?: string;
+  invoiceDocumentUrl?: string;
+  receiptDocumentUrl?: string;
   createdAt: string;
 }
 
@@ -243,6 +247,39 @@ export default function PoTrackPage() {
                   </div>
                 )}
               </div>
+
+              {/* Documents (Invoice & Tanda Terima) */}
+              {(po.invoiceDocumentUrl || po.receiptDocumentUrl) && (
+                <div className="pt-5 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-gray-900 mb-3">Dokumen</p>
+                  <div className="flex flex-wrap gap-3">
+                    {po.invoiceDocumentUrl && (
+                      <a
+                        href={po.invoiceDocumentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-100 transition"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>Invoice{po.invoiceNumber ? ` (${po.invoiceNumber})` : ""}</span>
+                        <Download className="w-3.5 h-3.5 ml-1" />
+                      </a>
+                    )}
+                    {po.receiptDocumentUrl && (
+                      <a
+                        href={po.receiptDocumentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-100 transition"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>Tanda Terima Barang</span>
+                        <Download className="w-3.5 h-3.5 ml-1" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Flow Timeline */}
               <div className="pt-5 border-t border-gray-100">

@@ -5,7 +5,24 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { formatCurrency, PO_STATUS_LABELS } from "@/lib/utils";
-import { ShoppingCart, Package, CheckCircle2, Clock, Loader2, ArrowRight, FileText, Upload, Download, X, Eye } from "lucide-react";
+import {
+  ShoppingCart, Package, CheckCircle2, Clock, Loader2, ArrowRight,
+  FileText, Upload, Download, X, Eye, Edit3, Plus, Trash2, CheckSquare, Square,
+} from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+interface PoItem {
+  id?: string;
+  itemName: string;
+  description?: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  totalPrice?: string;
+}
 
 interface PurchaseOrder {
   id: string;
@@ -17,8 +34,16 @@ interface PurchaseOrder {
   totalAmount?: string;
   vendorName?: string;
   receiptDocumentUrl?: string;
+  invoiceDocumentUrl?: string;
+  invoiceNumber?: string;
+  taxInvoiceNumber?: string;
+  paymentRef?: string;
   createdAt: string;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Page component                                                     */
+/* ------------------------------------------------------------------ */
 
 export default function PengurusPOPage() {
   const [userName, setUserName] = useState("");
@@ -27,10 +52,37 @@ export default function PengurusPOPage() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [userRole, setUserRole] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Upload Tanda Terima modal
   const [uploadModalPoId, setUploadModalPoId] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // View document modal
   const [viewDocUrl, setViewDocUrl] = useState<string | null>(null);
+
+  // Edit PO modal (staf pengadaan)
+  const [editModalPo, setEditModalPo] = useState<PurchaseOrder | null>(null);
+  const [editDescription, setEditDescription] = useState("");
+  const [editItems, setEditItems] = useState<PoItem[]>([]);
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Invoice upload modal (staf piutang)
+  const [invoiceModalPoId, setInvoiceModalPoId] = useState<string | null>(null);
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [taxInvoiceNumber, setTaxInvoiceNumber] = useState("");
+  const [invoiceUploading, setInvoiceUploading] = useState(false);
+
+  // Payment verification modal (staf akunting)
+  const [paymentModalPoId, setPaymentModalPoId] = useState<string | null>(null);
+  const [paymentVerified, setPaymentVerified] = useState(false);
+  const [paymentSaving, setPaymentSaving] = useState(false);
+
+  // Batch selection (staf pengadaan)
+  const [selectedPoIds, setSelectedPoIds] = useState<Set<string>>(new Set());
+  const [batchProcessing, setBatchProcessing] = useState(false);
+
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -48,7 +100,6 @@ export default function PengurusPOPage() {
       );
       setUserEmail(user.email || "");
 
-      // Get user role
       const roleRes = await fetch("/api/approvals?view=all");
       if (roleRes.ok) {
         const roleData = await roleRes.json();
@@ -76,13 +127,15 @@ export default function PengurusPOPage() {
     router.push("/pengurus/login");
   }
 
-  async function updatePOStatus(poId: string, newStatus: string) {
+  /* ---- Status update ---- */
+
+  async function updatePOStatus(poId: string, newStatus: string, extra?: Record<string, unknown>) {
     setUpdatingId(poId);
     try {
       const res = await fetch(`/api/po/${poId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, ...extra }),
       });
       if (res.ok) {
         loadData();
@@ -97,6 +150,8 @@ export default function PengurusPOPage() {
     }
   }
 
+  /* ---- Upload Tanda Terima ---- */
+
   async function handleUploadAndDeliver(poId: string) {
     if (!uploadFile) {
       alert("Silakan pilih file Tanda Terima Barang terlebih dahulu");
@@ -104,14 +159,10 @@ export default function PengurusPOPage() {
     }
     setUploading(true);
     try {
-      // 1. Upload file
       const formData = new FormData();
       formData.append("file", uploadFile);
       formData.append("type", "tanda-terima");
-      const uploadRes = await fetch("/api/upload-document", {
-        method: "POST",
-        body: formData,
-      });
+      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
       if (!uploadRes.ok) {
         const err = await uploadRes.json();
         alert(err.error || "Gagal mengupload file");
@@ -119,14 +170,10 @@ export default function PengurusPOPage() {
       }
       const { url } = await uploadRes.json();
 
-      // 2. Update PO status with receipt document URL
       const statusRes = await fetch(`/api/po/${poId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "goods_delivered",
-          receiptDocumentUrl: url,
-        }),
+        body: JSON.stringify({ status: "goods_delivered", receiptDocumentUrl: url }),
       });
       if (statusRes.ok) {
         setUploadModalPoId(null);
@@ -143,6 +190,188 @@ export default function PengurusPOPage() {
     }
   }
 
+  /* ---- Edit PO (staf pengadaan) ---- */
+
+  async function openEditModal(po: PurchaseOrder) {
+    setEditModalPo(po);
+    setEditDescription(po.description);
+    // Fetch items
+    try {
+      const res = await fetch(`/api/purchase-orders/${po.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        const items = (data.items || []).map((item: PoItem & { totalPrice?: string }) => ({
+          itemName: item.itemName,
+          description: item.description || "",
+          quantity: item.quantity,
+          unit: item.unit || "pcs",
+          unitPrice: typeof item.unitPrice === "string" ? parseFloat(item.unitPrice) : item.unitPrice,
+        }));
+        setEditItems(items.length > 0 ? items : [{ itemName: "", description: "", quantity: 1, unit: "pcs", unitPrice: 0 }]);
+      }
+    } catch {
+      setEditItems([{ itemName: "", description: "", quantity: 1, unit: "pcs", unitPrice: 0 }]);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editModalPo) return;
+    setEditSaving(true);
+    try {
+      const validItems = editItems.filter((i) => i.itemName.trim() && i.unitPrice > 0);
+      const totalAmount = validItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+
+      const res = await fetch(`/api/purchase-orders/${editModalPo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: editDescription,
+          estimatedAmount: totalAmount > 0 ? totalAmount : undefined,
+          items: validItems.length > 0 ? validItems : undefined,
+        }),
+      });
+      if (res.ok) {
+        setEditModalPo(null);
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Gagal menyimpan perubahan");
+      }
+    } catch {
+      alert("Gagal menyimpan perubahan");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  /* ---- Invoice Upload (staf piutang) ---- */
+
+  async function handleInvoiceUpload(poId: string) {
+    if (!invoiceFile || !invoiceNumber.trim()) {
+      alert("Nomor invoice dan file lampiran wajib diisi");
+      return;
+    }
+    setInvoiceUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", invoiceFile);
+      formData.append("type", "invoice");
+      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        alert(err.error || "Gagal mengupload file");
+        return;
+      }
+      const { url } = await uploadRes.json();
+
+      const statusRes = await fetch(`/api/po/${poId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "invoicing",
+          invoiceNumber: invoiceNumber.trim(),
+          invoiceDocumentUrl: url,
+          taxInvoiceNumber: taxInvoiceNumber.trim() || undefined,
+        }),
+      });
+      if (statusRes.ok) {
+        setInvoiceModalPoId(null);
+        setInvoiceFile(null);
+        setInvoiceNumber("");
+        setTaxInvoiceNumber("");
+        loadData();
+      } else {
+        const data = await statusRes.json();
+        alert(data.error || "Gagal mengupdate status");
+      }
+    } catch {
+      alert("Gagal mengupload invoice");
+    } finally {
+      setInvoiceUploading(false);
+    }
+  }
+
+  /* ---- Payment Verification (staf akunting) ---- */
+
+  async function handlePaymentVerification(poId: string) {
+    if (!paymentVerified) {
+      alert("Anda harus memverifikasi bahwa pembayaran sudah dilakukan");
+      return;
+    }
+    setPaymentSaving(true);
+    try {
+      const res = await fetch(`/api/po/${poId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      if (res.ok) {
+        setPaymentModalPoId(null);
+        setPaymentVerified(false);
+        loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Gagal menyelesaikan PO");
+      }
+    } catch {
+      alert("Gagal menyelesaikan PO");
+    } finally {
+      setPaymentSaving(false);
+    }
+  }
+
+  /* ---- Batch Process (staf pengadaan) ---- */
+
+  function toggleSelection(poId: string) {
+    setSelectedPoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(poId)) next.delete(poId);
+      else next.add(poId);
+      return next;
+    });
+  }
+
+  const batchEligiblePos = purchaseOrders.filter(
+    (po) => ["review_pengadaan", "pricing"].includes(po.status)
+  );
+
+  function toggleSelectAll() {
+    if (selectedPoIds.size === batchEligiblePos.length) {
+      setSelectedPoIds(new Set());
+    } else {
+      setSelectedPoIds(new Set(batchEligiblePos.map((po) => po.id)));
+    }
+  }
+
+  async function handleBatchApproval() {
+    if (selectedPoIds.size === 0) return;
+    setBatchProcessing(true);
+    try {
+      // Move all selected POs to pending_manager status
+      const results = await Promise.allSettled(
+        Array.from(selectedPoIds).map((poId) =>
+          fetch(`/api/purchase-orders/${poId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "pending_manager" }),
+          })
+        )
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed > 0) {
+        alert(`${failed} PO gagal diproses`);
+      }
+      setSelectedPoIds(new Set());
+      loadData();
+    } catch {
+      alert("Gagal memproses batch approval");
+    } finally {
+      setBatchProcessing(false);
+    }
+  }
+
+  /* ---- Helpers ---- */
+
   const ROLE_DISPLAY: Record<string, string> = {
     staf_treasury: "Staf Treasury",
     staf_pengadaan: "Staf Pengadaan",
@@ -157,10 +386,10 @@ export default function PengurusPOPage() {
       case "procurement": return { label: "Kirim Barang", nextStatus: "delivery", requiredRole: "staf_pengadaan" };
       case "delivery": return { label: "Barang Diterima", nextStatus: "goods_received", requiredRole: "staf_piutang" };
       case "goods_received": return { label: "Upload Tanda Terima & Kirim", nextStatus: "goods_delivered", needsInput: "upload_receipt", requiredRole: "staf_piutang" };
-      case "goods_delivered": return { label: "Proses Invoice", nextStatus: "invoicing", needsInput: "view_receipt", requiredRole: "staf_akunting" };
+      case "goods_delivered": return { label: "Upload Invoice & Proses", nextStatus: "invoicing", needsInput: "upload_invoice", requiredRole: "staf_piutang" };
       case "invoicing": return { label: "Menunggu Bayar", nextStatus: "waiting_payment", requiredRole: "staf_akunting" };
       case "waiting_payment": return { label: "Bayar Diterima", nextStatus: "payment_received", requiredRole: "staf_treasury" };
-      case "payment_received": return { label: "Selesai", nextStatus: "completed", requiredRole: "staf_akunting" };
+      case "payment_received": return { label: "Verifikasi & Selesai", nextStatus: "completed", needsInput: "verify_payment", requiredRole: "staf_akunting" };
       default: return null;
     }
   }
@@ -209,9 +438,7 @@ export default function PengurusPOPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Purchase Orders</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Kelola semua purchase order koperasi
-            </p>
+            <p className="text-sm text-gray-500 mt-0.5">Kelola semua purchase order koperasi</p>
           </div>
         </div>
       </div>
@@ -223,37 +450,61 @@ export default function PengurusPOPage() {
             <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
               <Package className="w-5 h-5 text-blue-600" />
             </div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              Total PO
-            </p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Total PO</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{totalPO}</p>
         </div>
-
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
               <Clock className="w-5 h-5 text-amber-600" />
             </div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              PO Pending
-            </p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">PO Pending</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{pendingPO}</p>
         </div>
-
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             </div>
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              PO Completed
-            </p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">PO Completed</p>
           </div>
           <p className="text-2xl font-bold text-gray-900">{completedPO}</p>
         </div>
       </div>
+
+      {/* ── Batch Selection Bar (staf_pengadaan) ── */}
+      {userRole === "staf_pengadaan" && batchEligiblePos.length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={toggleSelectAll} className="text-indigo-600 hover:text-indigo-800 transition">
+              {selectedPoIds.size === batchEligiblePos.length ? (
+                <CheckSquare className="w-5 h-5" />
+              ) : (
+                <Square className="w-5 h-5" />
+              )}
+            </button>
+            <p className="text-sm text-indigo-700">
+              <span className="font-semibold">{selectedPoIds.size}</span> dari {batchEligiblePos.length} PO dipilih untuk diproses ke approval
+            </p>
+          </div>
+          {selectedPoIds.size > 0 && (
+            <button
+              onClick={handleBatchApproval}
+              disabled={batchProcessing}
+              className="inline-flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+            >
+              {batchProcessing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowRight className="w-4 h-4" />
+              )}
+              Kirim {selectedPoIds.size} PO ke Approval
+            </button>
+          )}
+        </div>
+      )}
 
       {/* PO Table */}
       <div className="bg-white rounded-2xl shadow-sm">
@@ -268,6 +519,9 @@ export default function PengurusPOPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-400 text-xs uppercase tracking-wide">
+                    {userRole === "staf_pengadaan" && batchEligiblePos.length > 0 && (
+                      <th className="pb-3 font-medium w-8"></th>
+                    )}
                     <th className="pb-3 font-medium">PO Number</th>
                     <th className="pb-3 font-medium">Deskripsi</th>
                     <th className="pb-3 font-medium">Vendor</th>
@@ -278,182 +532,176 @@ export default function PengurusPOPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {purchaseOrders.map((po) => (
-                    <tr
-                      key={po.id}
-                      className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="py-3.5">
-                        <span className="font-mono text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded-md">
-                          {po.poNumber || po.trackingNumber}
-                        </span>
-                      </td>
-                      <td className="py-3.5">
-                        <p className="font-medium text-gray-900 truncate max-w-[200px]">
-                          {po.description}
-                        </p>
-                      </td>
-                      <td className="py-3.5 text-gray-500">
-                        {po.vendorName || "-"}
-                      </td>
-                      <td className="py-3.5 text-center">
-                        <span
-                          className={`inline-block text-[11px] px-2.5 py-1 rounded-full font-medium ${getStatusBadgeClasses(po.status)}`}
-                        >
-                          {PO_STATUS_LABELS[po.status] || po.status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-right font-semibold text-gray-900">
-                        {formatCurrency(po.totalAmount || po.estimatedAmount || "0")}
-                      </td>
-                      <td className="py-3.5 text-gray-500 text-xs">
-                        {new Date(po.createdAt).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </td>
-                      <td className="py-3.5">
-                        {(() => {
-                          const action = getNextAction(po.status);
-                          // Show receipt document link for any PO that has it (post-delivery statuses)
-                          const showReceiptLink = po.receiptDocumentUrl && !action?.needsInput?.includes("receipt");
+                  {purchaseOrders.map((po) => {
+                    const action = getNextAction(po.status);
+                    const isBatchEligible = ["review_pengadaan", "pricing"].includes(po.status);
+                    const showReceiptLink = po.receiptDocumentUrl && action?.needsInput !== "upload_receipt";
+                    const showInvoiceLink = po.invoiceDocumentUrl;
 
-                          if (!action) {
-                            return showReceiptLink ? (
+                    return (
+                      <tr key={po.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        {/* Batch checkbox */}
+                        {userRole === "staf_pengadaan" && batchEligiblePos.length > 0 && (
+                          <td className="py-3.5">
+                            {isBatchEligible ? (
+                              <button onClick={() => toggleSelection(po.id)} className="text-indigo-500 hover:text-indigo-700">
+                                {selectedPoIds.has(po.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                              </button>
+                            ) : (
+                              <span />
+                            )}
+                          </td>
+                        )}
+                        <td className="py-3.5">
+                          <span className="font-mono text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded-md">
+                            {po.poNumber || po.trackingNumber}
+                          </span>
+                        </td>
+                        <td className="py-3.5">
+                          <p className="font-medium text-gray-900 truncate max-w-[200px]">{po.description}</p>
+                        </td>
+                        <td className="py-3.5 text-gray-500">{po.vendorName || "-"}</td>
+                        <td className="py-3.5 text-center">
+                          <span className={`inline-block text-[11px] px-2.5 py-1 rounded-full font-medium ${getStatusBadgeClasses(po.status)}`}>
+                            {PO_STATUS_LABELS[po.status] || po.status}
+                          </span>
+                        </td>
+                        <td className="py-3.5 text-right font-semibold text-gray-900">
+                          {formatCurrency(po.totalAmount || po.estimatedAmount || "0")}
+                        </td>
+                        <td className="py-3.5 text-gray-500 text-xs">
+                          {new Date(po.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                        <td className="py-3.5">
+                          <div className="flex items-center gap-1.5">
+                            {/* Edit button for staf_pengadaan on review/pricing */}
+                            {userRole === "staf_pengadaan" && isBatchEligible && (
+                              <button
+                                onClick={() => openEditModal(po)}
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 font-medium transition"
+                                title="Edit Detail PO"
+                              >
+                                <Edit3 className="w-3 h-3" /> Edit
+                              </button>
+                            )}
+
+                            {/* Document links */}
+                            {showReceiptLink && (
                               <button
                                 onClick={() => setViewDocUrl(po.receiptDocumentUrl!)}
                                 className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
                                 title="Lihat Tanda Terima"
                               >
-                                <Eye className="w-3 h-3" /> Tanda Terima
+                                <Eye className="w-3 h-3" />
                               </button>
-                            ) : <span className="text-xs text-gray-300">—</span>;
-                          }
-                          if (userRole !== action.requiredRole) {
-                            return (
-                              <div className="flex items-center gap-1.5">
-                                {showReceiptLink && (
-                                  <button
-                                    onClick={() => setViewDocUrl(po.receiptDocumentUrl!)}
-                                    className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
-                                    title="Lihat Tanda Terima"
-                                  >
-                                    <Eye className="w-3 h-3" />
-                                  </button>
-                                )}
-                                <span className="text-[10px] text-gray-400 italic">Menunggu {ROLE_DISPLAY[action.requiredRole] || action.requiredRole}</span>
-                              </div>
-                            );
-                          }
-                          if (action.needsInput === "spp") {
-                            return (
+                            )}
+                            {showInvoiceLink && (
                               <button
-                                onClick={() => router.push(`/pengurus/spp/create?type=purchase_order&ref=${po.id}`)}
-                                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 font-medium transition"
+                                onClick={() => setViewDocUrl(po.invoiceDocumentUrl!)}
+                                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 font-medium transition"
+                                title="Lihat Invoice"
                               >
-                                <FileText className="w-3 h-3" /> Buat SPP
+                                <FileText className="w-3 h-3" />
                               </button>
-                            );
-                          }
-                          if (action.needsInput === "upload_receipt") {
-                            return (
-                              <button
-                                onClick={() => setUploadModalPoId(po.id)}
-                                className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 font-medium transition"
-                              >
-                                <Upload className="w-3 h-3" /> Upload Tanda Terima
-                              </button>
-                            );
-                          }
-                          if (action.needsInput === "view_receipt") {
-                            return (
-                              <div className="flex items-center gap-1.5">
-                                {po.receiptDocumentUrl && (
+                            )}
+
+                            {/* Action buttons */}
+                            {(() => {
+                              if (!action) return null;
+                              if (userRole !== action.requiredRole) {
+                                return <span className="text-[10px] text-gray-400 italic">Menunggu {ROLE_DISPLAY[action.requiredRole] || action.requiredRole}</span>;
+                              }
+                              if (action.needsInput === "spp") {
+                                return (
                                   <button
-                                    onClick={() => setViewDocUrl(po.receiptDocumentUrl!)}
-                                    className="inline-flex items-center gap-1 text-xs px-2 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition"
-                                    title="Lihat Tanda Terima"
+                                    onClick={() => router.push(`/pengurus/spp/create?type=purchase_order&ref=${po.id}`)}
+                                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 font-medium transition"
                                   >
-                                    <Eye className="w-3 h-3" /> Tanda Terima
+                                    <FileText className="w-3 h-3" /> Buat SPP
                                   </button>
-                                )}
+                                );
+                              }
+                              if (action.needsInput === "upload_receipt") {
+                                return (
+                                  <button
+                                    onClick={() => setUploadModalPoId(po.id)}
+                                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 font-medium transition"
+                                  >
+                                    <Upload className="w-3 h-3" /> Tanda Terima
+                                  </button>
+                                );
+                              }
+                              if (action.needsInput === "upload_invoice") {
+                                return (
+                                  <button
+                                    onClick={() => setInvoiceModalPoId(po.id)}
+                                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 font-medium transition"
+                                  >
+                                    <Upload className="w-3 h-3" /> Invoice
+                                  </button>
+                                );
+                              }
+                              if (action.needsInput === "verify_payment") {
+                                return (
+                                  <button
+                                    onClick={() => setPaymentModalPoId(po.id)}
+                                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 font-medium transition"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" /> Verifikasi
+                                  </button>
+                                );
+                              }
+                              return (
                                 <button
                                   onClick={() => updatePOStatus(po.id, action.nextStatus)}
                                   disabled={updatingId === po.id}
                                   className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 font-medium transition disabled:opacity-50"
                                 >
-                                  {updatingId === po.id ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <ArrowRight className="w-3 h-3" />
-                                  )}
-                                  Invoice
+                                  {updatingId === po.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+                                  {action.label}
                                 </button>
-                              </div>
-                            );
-                          }
-                          return (
-                            <button
-                              onClick={() => updatePOStatus(po.id, action.nextStatus)}
-                              disabled={updatingId === po.id}
-                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 font-medium transition disabled:opacity-50"
-                            >
-                              {updatingId === po.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <ArrowRight className="w-3 h-3" />
-                              )}
-                              {action.label}
-                            </button>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  ))}
+                              );
+                            })()}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {purchaseOrders.length > 0 && (
                 <div className="pt-4 border-t border-gray-100 mt-2">
-                  <p className="text-xs text-gray-400">
-                    Menampilkan {purchaseOrders.length} purchase order.
-                  </p>
+                  <p className="text-xs text-gray-400">Menampilkan {purchaseOrders.length} purchase order.</p>
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
-      {/* Upload Tanda Terima Modal */}
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/*  MODALS                                                        */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+
+      {/* ── Upload Tanda Terima Modal ── */}
       {uploadModalPoId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Upload Tanda Terima Barang</h3>
-              <button
-                onClick={() => { setUploadModalPoId(null); setUploadFile(null); }}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => { setUploadModalPoId(null); setUploadFile(null); }} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Upload dokumen Tanda Terima Barang sebelum mengirim barang ke client. Format: PDF, JPEG, PNG, atau WebP (maks 5MB).
-            </p>
+            <p className="text-sm text-gray-500 mb-4">Upload dokumen Tanda Terima Barang. Format: PDF, JPEG, PNG, atau WebP (maks 5MB).</p>
             <div className="mb-4">
               <label className="block">
                 <div className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${uploadFile ? "border-teal-300 bg-teal-50" : "border-gray-200 hover:border-gray-300"}`}>
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    className="hidden"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  />
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} />
                   {uploadFile ? (
                     <div className="flex items-center justify-center gap-2">
                       <FileText className="w-5 h-5 text-teal-600" />
                       <span className="text-sm font-medium text-teal-700">{uploadFile.name}</span>
-                      <span className="text-xs text-gray-400">({(uploadFile.size / 1024).toFixed(0)} KB)</span>
                     </div>
                   ) : (
                     <>
@@ -465,40 +713,239 @@ export default function PengurusPOPage() {
               </label>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => { setUploadModalPoId(null); setUploadFile(null); }}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition"
-              >
-                Batal
-              </button>
+              <button onClick={() => { setUploadModalPoId(null); setUploadFile(null); }} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Batal</button>
               <button
                 onClick={() => handleUploadAndDeliver(uploadModalPoId)}
                 disabled={!uploadFile || uploading}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-teal-500 rounded-xl hover:bg-teal-600 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-teal-500 rounded-xl hover:bg-teal-600 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
-                {uploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Mengupload...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    Upload & Kirim
-                  </>
-                )}
+                {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengupload...</> : <><Upload className="w-4 h-4" /> Upload & Kirim</>}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* View Tanda Terima Modal */}
+      {/* ── Invoice Upload Modal (staf piutang) ── */}
+      {invoiceModalPoId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Upload Invoice & Lampiran</h3>
+              <button onClick={() => { setInvoiceModalPoId(null); setInvoiceFile(null); setInvoiceNumber(""); setTaxInvoiceNumber(""); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Invoice *</label>
+                <input
+                  type="text"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  placeholder="INV-2026-001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Faktur Pajak</label>
+                <input
+                  type="text"
+                  value={taxInvoiceNumber}
+                  onChange={(e) => setTaxInvoiceNumber(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                  placeholder="010.000-26.00000001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">File Invoice / Lampiran *</label>
+                <label className="block">
+                  <div className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition ${invoiceFile ? "border-green-300 bg-green-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => setInvoiceFile(e.target.files?.[0] || null)} />
+                    {invoiceFile ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <FileText className="w-5 h-5 text-green-600" />
+                        <span className="text-sm font-medium text-green-700">{invoiceFile.name}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-7 h-7 text-gray-300 mx-auto mb-1" />
+                        <p className="text-sm text-gray-400">PDF, JPEG, PNG (maks 5MB)</p>
+                      </>
+                    )}
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setInvoiceModalPoId(null); setInvoiceFile(null); setInvoiceNumber(""); setTaxInvoiceNumber(""); }} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Batal</button>
+              <button
+                onClick={() => handleInvoiceUpload(invoiceModalPoId)}
+                disabled={!invoiceFile || !invoiceNumber.trim() || invoiceUploading}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-xl hover:bg-green-700 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {invoiceUploading ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengupload...</> : <><Upload className="w-4 h-4" /> Upload Invoice</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit PO Modal (staf pengadaan) ── */}
+      {editModalPo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Detail PO - {editModalPo.poNumber}</h3>
+              <button onClick={() => setEditModalPo(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none resize-none"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-gray-700">Detail Barang</label>
+                  <button
+                    onClick={() => setEditItems([...editItems, { itemName: "", description: "", quantity: 1, unit: "pcs", unitPrice: 0 }])}
+                    className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-medium"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Tambah Item
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {editItems.map((item, idx) => (
+                    <div key={idx} className="bg-gray-50 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400 font-medium">Item {idx + 1}</span>
+                        {editItems.length > 1 && (
+                          <button onClick={() => setEditItems(editItems.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={item.itemName}
+                        onChange={(e) => { const newItems = [...editItems]; newItems[idx] = { ...item, itemName: e.target.value }; setEditItems(newItems); }}
+                        placeholder="Nama barang"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[10px] text-gray-400">Qty</label>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => { const newItems = [...editItems]; newItems[idx] = { ...item, quantity: parseInt(e.target.value) || 1 }; setEditItems(newItems); }}
+                            min="1"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400">Satuan</label>
+                          <input
+                            type="text"
+                            value={item.unit}
+                            onChange={(e) => { const newItems = [...editItems]; newItems[idx] = { ...item, unit: e.target.value }; setEditItems(newItems); }}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400">Harga Satuan</label>
+                          <input
+                            type="number"
+                            value={item.unitPrice || ""}
+                            onChange={(e) => { const newItems = [...editItems]; newItems[idx] = { ...item, unitPrice: parseFloat(e.target.value) || 0 }; setEditItems(newItems); }}
+                            min="0"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 text-right">
+                        Subtotal: {formatCurrency(item.quantity * item.unitPrice)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-right">
+                  <p className="text-sm font-semibold text-gray-900">
+                    Total: {formatCurrency(editItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0))}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setEditModalPo(null)} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Batal</button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={editSaving}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {editSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : <><Edit3 className="w-4 h-4" /> Simpan Perubahan</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Payment Verification Modal (staf akunting) ── */}
+      {paymentModalPoId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Verifikasi Pembayaran</h3>
+              <button onClick={() => { setPaymentModalPoId(null); setPaymentVerified(false); }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <p className="text-sm text-amber-800">
+                Pastikan pembayaran untuk PO ini sudah diterima dan dicatat dengan benar sebelum menyelesaikan PO.
+              </p>
+            </div>
+            <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition">
+              <input
+                type="checkbox"
+                checked={paymentVerified}
+                onChange={(e) => setPaymentVerified(e.target.checked)}
+                className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+              />
+              <span className="text-sm text-gray-700 font-medium">
+                Saya memverifikasi bahwa pembayaran sudah dilakukan dan dicatat
+              </span>
+            </label>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setPaymentModalPoId(null); setPaymentVerified(false); }} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Batal</button>
+              <button
+                onClick={() => handlePaymentVerification(paymentModalPoId)}
+                disabled={!paymentVerified || paymentSaving}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                {paymentSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</> : <><CheckCircle2 className="w-4 h-4" /> PO Selesai</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── View Document Modal ── */}
       {viewDocUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl mx-4 p-6 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Tanda Terima Barang</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Dokumen</h3>
               <div className="flex items-center gap-2">
                 <a
                   href={viewDocUrl}
@@ -508,27 +955,16 @@ export default function PengurusPOPage() {
                 >
                   <Download className="w-3 h-3" /> Download
                 </a>
-                <button
-                  onClick={() => setViewDocUrl(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
+                <button onClick={() => setViewDocUrl(null)} className="text-gray-400 hover:text-gray-600">
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
             <div className="flex-1 overflow-auto rounded-xl bg-gray-50 border border-gray-100">
               {viewDocUrl.match(/\.(jpg|jpeg|png|webp)/i) ? (
-                <img
-                  src={viewDocUrl}
-                  alt="Tanda Terima Barang"
-                  className="w-full h-auto object-contain"
-                />
+                <img src={viewDocUrl} alt="Dokumen" className="w-full h-auto object-contain" />
               ) : (
-                <iframe
-                  src={viewDocUrl}
-                  className="w-full h-[70vh]"
-                  title="Tanda Terima Barang"
-                />
+                <iframe src={viewDocUrl} className="w-full h-[70vh]" title="Dokumen" />
               )}
             </div>
           </div>

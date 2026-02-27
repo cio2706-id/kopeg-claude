@@ -6,12 +6,15 @@ import { z } from "zod";
 
 const updatePoSchema = z.object({
   status: z.string().optional(),
+  description: z.string().optional(),
+  estimatedAmount: z.number().positive().optional(),
   totalAmount: z.number().positive().optional(),
   adjustmentNotes: z.string().optional(),
   vendorName: z.string().optional(),
   sppRef: z.string().optional(),
   receiptDocumentUrl: z.string().optional(),
   invoiceNumber: z.string().optional(),
+  invoiceDocumentUrl: z.string().optional(),
   taxInvoiceNumber: z.string().optional(),
   paymentRef: z.string().optional(),
   items: z
@@ -46,6 +49,9 @@ export async function PATCH(
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
     if (parsed.data.status) updateData.status = parsed.data.status;
+    if (parsed.data.description) updateData.description = parsed.data.description;
+    if (parsed.data.estimatedAmount)
+      updateData.estimatedAmount = parsed.data.estimatedAmount.toString();
     if (parsed.data.totalAmount)
       updateData.totalAmount = parsed.data.totalAmount.toString();
     if (parsed.data.adjustmentNotes)
@@ -56,6 +62,8 @@ export async function PATCH(
       updateData.receiptDocumentUrl = parsed.data.receiptDocumentUrl;
     if (parsed.data.invoiceNumber)
       updateData.invoiceNumber = parsed.data.invoiceNumber;
+    if (parsed.data.invoiceDocumentUrl)
+      updateData.invoiceDocumentUrl = parsed.data.invoiceDocumentUrl;
     if (parsed.data.taxInvoiceNumber)
       updateData.taxInvoiceNumber = parsed.data.taxInvoiceNumber;
     if (parsed.data.paymentRef) updateData.paymentRef = parsed.data.paymentRef;
