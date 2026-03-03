@@ -9,8 +9,16 @@ import {
   LOAN_TYPE_LABELS,
   LOAN_STATUS_LABELS,
 } from "@/lib/utils";
-import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown } from "lucide-react";
+import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save } from "lucide-react";
 import Link from "next/link";
+
+interface LoanQuota {
+  id: string;
+  period: string;
+  loanType: string;
+  quota: number;
+  usedQuota: number;
+}
 
 interface Loan {
   id: string;
@@ -22,6 +30,9 @@ interface Loan {
   monthlyInstallment: string;
   purpose?: string;
   createdAt: string;
+  queueNumber: number | null;
+  queuePeriod: string | null;
+  holdReason: string | null;
 }
 
 type LoanFilter = "all" | "reguler" | "khusus" | "barang" | "travel" | "channeling";
@@ -34,6 +45,10 @@ export default function PengurusLoansPage() {
   const [userRole, setUserRole] = useState("");
   const [filter, setFilter] = useState<LoanFilter>("all");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [quotas, setQuotas] = useState<LoanQuota[]>([]);
+  const [showQuotaPanel, setShowQuotaPanel] = useState(false);
+  const [quotaEdits, setQuotaEdits] = useState<Record<string, string>>({});
+  const [savingQuota, setSavingQuota] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -58,10 +73,18 @@ export default function PengurusLoansPage() {
         setUserRole(roleData.userRole || "");
       }
 
-      const res = await fetch("/api/loans?view=all");
-      if (res.ok) {
-        const data = await res.json();
+      const [loanRes, quotaRes] = await Promise.all([
+        fetch("/api/loans?view=all"),
+        fetch(`/api/loan-quotas?period=${getCurrentPeriod()}`),
+      ]);
+
+      if (loanRes.ok) {
+        const data = await loanRes.json();
         setLoans(data.loans || []);
+      }
+      if (quotaRes.ok) {
+        const data = await quotaRes.json();
+        setQuotas(data.quotas || []);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -74,9 +97,48 @@ export default function PengurusLoansPage() {
     loadData();
   }, [loadData]);
 
+  function getCurrentPeriod() {
+    const now = new Date();
+    return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/pengurus/login");
+  }
+
+  async function saveQuota(loanType: string) {
+    const value = quotaEdits[loanType];
+    if (!value || isNaN(parseInt(value))) return;
+
+    setSavingQuota(loanType);
+    try {
+      const res = await fetch("/api/loan-quotas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          period: getCurrentPeriod(),
+          loanType,
+          quota: parseInt(value),
+        }),
+      });
+      if (res.ok) {
+        const quotaRes = await fetch(`/api/loan-quotas?period=${getCurrentPeriod()}`);
+        if (quotaRes.ok) {
+          const data = await quotaRes.json();
+          setQuotas(data.quotas || []);
+        }
+        setQuotaEdits((prev) => {
+          const next = { ...prev };
+          delete next[loanType];
+          return next;
+        });
+      }
+    } catch {
+      alert("Gagal menyimpan kuota");
+    } finally {
+      setSavingQuota(null);
+    }
   }
 
   async function updateLoanStatus(loanId: string, newStatus: string, extra?: Record<string, string>) {
@@ -100,10 +162,11 @@ export default function PengurusLoansPage() {
     }
   }
 
-  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string; requiredRole: string } | null {
+  function getNextAction(status: string): { label: string; nextStatus: string; needsInput?: string; requiredRole: string; icon?: string } | null {
     switch (status) {
       case "spp_process": return { label: "Buat SPP", nextStatus: "", needsInput: "spp", requiredRole: "staf_treasury" };
       case "bank_process": return { label: "Dana Dicairkan", nextStatus: "disbursed", requiredRole: "staf_treasury" };
+      case "held": return { label: "Proses Ulang", nextStatus: "pending_treasury", requiredRole: "staf_treasury", icon: "resume" };
       default: return null;
     }
   }
@@ -113,6 +176,8 @@ export default function PengurusLoansPage() {
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     if (["rejected"].includes(status))
       return "bg-red-50 text-red-700 border border-red-200";
+    if (["held"].includes(status))
+      return "bg-orange-50 text-orange-700 border border-orange-200";
     if (["draft"].includes(status))
       return "bg-gray-100 text-gray-600 border border-gray-200";
     return "bg-amber-50 text-amber-700 border border-amber-200";
@@ -122,8 +187,22 @@ export default function PengurusLoansPage() {
     return loan.loanType !== "channeling" && loan.loanType !== "travel";
   }
 
-  const filteredLoans =
-    filter === "all" ? loans : loans.filter((l) => l.loanType === filter);
+  const filteredLoans = (filter === "all" ? loans : loans.filter((l) => l.loanType === filter))
+    .sort((a, b) => {
+      // Pending loans sorted by queue number first
+      const aPending = a.status.startsWith("pending_") || a.status === "held";
+      const bPending = b.status.startsWith("pending_") || b.status === "held";
+      if (aPending && bPending) {
+        // Sort by period then queue number
+        if (a.queuePeriod && b.queuePeriod) {
+          if (a.queuePeriod !== b.queuePeriod) return a.queuePeriod.localeCompare(b.queuePeriod);
+        }
+        return (a.queueNumber || 999) - (b.queueNumber || 999);
+      }
+      if (aPending && !bPending) return -1;
+      if (!aPending && bPending) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
   const totalLoans = loans.length;
   const activeLoans = loans.filter(
@@ -217,6 +296,86 @@ export default function PengurusLoansPage() {
         </div>
       </div>
 
+      {/* Quota Management Toggle */}
+      {userRole === "staf_treasury" && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowQuotaPanel(!showQuotaPanel)}
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-teal-600 transition"
+          >
+            <Settings2 className="w-4 h-4" />
+            Kuota Pinjaman Bulan Ini ({getCurrentPeriod()})
+            <span className={`transition-transform ${showQuotaPanel ? "rotate-180" : ""}`}>&#9660;</span>
+          </button>
+
+          {showQuotaPanel && (
+            <div className="mt-3 bg-white rounded-2xl shadow-sm p-5">
+              <p className="text-xs text-gray-500 mb-4">
+                Atur kuota maksimal pinjaman yang dapat disetujui per bulan untuk setiap jenis pinjaman.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(["reguler", "khusus", "barang", "travel", "channeling"] as const).map((type) => {
+                  const existing = quotas.find((q) => q.loanType === type);
+                  const currentQuota = existing?.quota ?? 10;
+                  const usedQuota = existing?.usedQuota ?? 0;
+                  const editValue = quotaEdits[type];
+                  const isEditing = editValue !== undefined;
+
+                  return (
+                    <div key={type} className="border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {LOAN_TYPE_LABELS[type] || type}
+                        </span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          usedQuota >= currentQuota
+                            ? "bg-red-50 text-red-600"
+                            : "bg-green-50 text-green-600"
+                        }`}>
+                          {usedQuota}/{currentQuota}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            usedQuota >= currentQuota ? "bg-red-400" : "bg-teal-400"
+                          }`}
+                          style={{ width: `${Math.min((usedQuota / currentQuota) * 100, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="999"
+                          value={isEditing ? editValue : currentQuota}
+                          onChange={(e) => setQuotaEdits((prev) => ({ ...prev, [type]: e.target.value }))}
+                          className="w-20 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-teal-300 outline-none"
+                        />
+                        {isEditing && (
+                          <button
+                            onClick={() => saveQuota(type)}
+                            disabled={savingQuota === type}
+                            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition disabled:opacity-50"
+                          >
+                            {savingQuota === type ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Save className="w-3 h-3" />
+                            )}
+                            Simpan
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filter */}
       <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm mb-6 w-fit">
         {filterOptions.map((opt) => (
@@ -251,12 +410,13 @@ export default function PengurusLoansPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-400 text-xs uppercase tracking-wide">
+                    <th className="pb-3 font-medium text-center">No. Urut</th>
                     <th className="pb-3 font-medium">Tracking</th>
                     <th className="pb-3 font-medium">Jenis</th>
                     <th className="pb-3 font-medium text-right">Jumlah</th>
                     <th className="pb-3 font-medium text-center">Tenor</th>
                     <th className="pb-3 font-medium text-center">Status</th>
-                    <th className="pb-3 font-medium">Tanggal</th>
+                    <th className="pb-3 font-medium">Periode</th>
                     <th className="pb-3 font-medium text-center">Formulir</th>
                     <th className="pb-3 font-medium">Aksi</th>
                   </tr>
@@ -265,8 +425,18 @@ export default function PengurusLoansPage() {
                   {filteredLoans.map((loan) => (
                     <tr
                       key={loan.id}
-                      className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors"
+                      className={`border-t border-gray-50 hover:bg-gray-50/50 transition-colors ${loan.status === "held" ? "bg-orange-50/30" : ""}`}
                     >
+                      <td className="py-3.5 text-center">
+                        {loan.queueNumber ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-lg border border-blue-200">
+                            <Hash className="w-3 h-3" />
+                            {loan.queueNumber}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
                       <td className="py-3.5">
                         <span className="font-mono text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded-md">
                           {loan.trackingNumber}
@@ -289,9 +459,12 @@ export default function PengurusLoansPage() {
                         >
                           {LOAN_STATUS_LABELS[loan.status] || loan.status}
                         </span>
+                        {loan.status === "held" && loan.holdReason && (
+                          <p className="text-[10px] text-orange-500 mt-0.5">{loan.holdReason}</p>
+                        )}
                       </td>
                       <td className="py-3.5 text-gray-500 text-xs">
-                        {new Date(loan.createdAt).toLocaleDateString("id-ID", {
+                        {loan.queuePeriod || new Date(loan.createdAt).toLocaleDateString("id-ID", {
                           day: "numeric",
                           month: "short",
                           year: "numeric",
@@ -332,10 +505,16 @@ export default function PengurusLoansPage() {
                             <button
                               onClick={() => updateLoanStatus(loan.id, action.nextStatus)}
                               disabled={updatingId === loan.id}
-                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg hover:bg-teal-100 font-medium transition disabled:opacity-50"
+                              className={`inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium transition disabled:opacity-50 ${
+                                action.icon === "resume"
+                                  ? "bg-green-50 text-green-600 hover:bg-green-100"
+                                  : "bg-teal-50 text-teal-600 hover:bg-teal-100"
+                              }`}
                             >
                               {updatingId === loan.id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : action.icon === "resume" ? (
+                                <PlayCircle className="w-3 h-3" />
                               ) : (
                                 <ArrowRight className="w-3 h-3" />
                               )}

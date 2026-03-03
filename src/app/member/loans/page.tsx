@@ -39,6 +39,9 @@ interface Loan {
   purpose: string;
   disbursedAt: string | null;
   createdAt: string;
+  queueNumber: number | null;
+  queuePeriod: string | null;
+  holdReason: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -114,6 +117,9 @@ export default function LoansPage() {
     }
     if (status === "rejected") {
       return "bg-red-100 text-red-700";
+    }
+    if (status === "held") {
+      return "bg-orange-100 text-orange-700";
     }
     return "bg-amber-100 text-amber-700";
   }
@@ -244,6 +250,11 @@ export default function LoansPage() {
                       <span className="font-mono text-xs text-teal-600 font-medium">
                         {loan.trackingNumber}
                       </span>
+                      {loan.queueNumber && (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                          Urut #{loan.queueNumber}
+                        </span>
+                      )}
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${statusBadgeClass(loan.status)}`}
                       >
@@ -259,7 +270,17 @@ export default function LoansPage() {
                         month: "long",
                         year: "numeric",
                       })}
+                      {loan.queuePeriod && (
+                        <span className="ml-2 text-gray-400">
+                          &middot; Periode {loan.queuePeriod}
+                        </span>
+                      )}
                     </p>
+                    {loan.status === "held" && loan.holdReason && (
+                      <p className="text-xs text-orange-600 mt-1">
+                        Ditunda: {loan.holdReason}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-bold text-gray-900">

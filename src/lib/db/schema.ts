@@ -39,6 +39,7 @@ export const loanStatusEnum = pgEnum("loan_status", [
   "rejected",
   "on_review",
   "selesai",
+  "held",
 ]);
 
 export const poStatusEnum = pgEnum("po_status", [
@@ -73,6 +74,7 @@ export const approvalActionEnum = pgEnum("approval_action", [
   "approve",
   "reject",
   "adjust",
+  "hold",
 ]);
 
 export const loanTypeEnum = pgEnum("loan_type", [
@@ -165,6 +167,9 @@ export const loans = pgTable("loans", {
   analysisNotes: text("analysis_notes"),
   analyzedBy: uuid("analyzed_by").references(() => users.id),
   analyzedAt: timestamp("analyzed_at"),
+  queueNumber: integer("queue_number"),
+  queuePeriod: varchar("queue_period", { length: 7 }), // "YYYY-MM"
+  holdReason: text("hold_reason"),
   formData: jsonb("form_data"),
   documentUrls: jsonb("document_urls").$type<string[]>(),
   accurateVoucherId: varchar("accurate_voucher_id", { length: 100 }),
@@ -173,6 +178,18 @@ export const loans = pgTable("loans", {
   bankPortalRef: varchar("bank_portal_ref", { length: 100 }),
   disbursedAt: timestamp("disbursed_at"),
   sppId: uuid("spp_id").references(() => spp.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─── Loan Quotas (Kuota Pinjaman per Bulan) ────────────────────────────────
+
+export const loanQuotas = pgTable("loan_quotas", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  period: varchar("period", { length: 7 }).notNull(), // "YYYY-MM"
+  loanType: loanTypeEnum("loan_type").notNull(),
+  quota: integer("quota").notNull().default(10),
+  usedQuota: integer("used_quota").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -416,3 +433,5 @@ export type LoanBalance = typeof loanBalances.$inferSelect;
 export type LoanInstallment = typeof loanInstallments.$inferSelect;
 export type MonthlyDeduction = typeof monthlyDeductions.$inferSelect;
 export type UploadLog = typeof uploadLogs.$inferSelect;
+export type LoanQuota = typeof loanQuotas.$inferSelect;
+export type NewLoanQuota = typeof loanQuotas.$inferInsert;

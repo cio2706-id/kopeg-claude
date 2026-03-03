@@ -4,7 +4,7 @@ import { loans, approvals } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS } from "@/lib/utils";
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { LOAN_COA_MAP } from "@/lib/accurate";
 
@@ -64,6 +64,17 @@ export async function POST(request: NextRequest) {
     const trackingNumber = generateTrackingNumber("LN");
     const coaCode = LOAN_COA_MAP[parsed.data.loanType] || null;
 
+    // Auto-assign queue number for the current month
+    const now = new Date();
+    const queuePeriod = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+
+    const [maxQueue] = await db
+      .select({ maxNum: sql<number>`COALESCE(MAX(${loans.queueNumber}), 0)` })
+      .from(loans)
+      .where(eq(loans.queuePeriod, queuePeriod));
+
+    const queueNumber = (maxQueue?.maxNum || 0) + 1;
+
     const [loan] = await db
       .insert(loans)
       .values({
@@ -79,6 +90,8 @@ export async function POST(request: NextRequest) {
         documentUrls: parsed.data.documentUrls || null,
         status: isChanneling ? "on_review" : "pending_treasury",
         coaCode,
+        queueNumber,
+        queuePeriod,
       })
       .returning();
 

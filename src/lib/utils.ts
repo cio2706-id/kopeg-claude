@@ -77,6 +77,7 @@ export const LOAN_STATUS_LABELS: Record<string, string> = {
   rejected: "Ditolak",
   on_review: "On Review",
   selesai: "Selesai",
+  held: "Ditunda",
 };
 
 export const PO_STATUS_LABELS: Record<string, string> = {

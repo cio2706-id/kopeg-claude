@@ -7,10 +7,11 @@ import {
   paymentRequests,
   users,
   employeeData,
+  loanQuotas,
 } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   insertJournal,
   LOAN_COA_MAP,
@@ -22,7 +23,7 @@ import { z } from "zod";
 
 const approvalSchema = z.object({
   approvalId: z.string().uuid(),
-  action: z.enum(["approve", "reject", "adjust"]),
+  action: z.enum(["approve", "reject", "adjust", "hold"]),
   comments: z.string().optional(),
   creditAnalysis: z.string().optional(),
   creditScore: z.string().optional(),
@@ -86,7 +87,51 @@ export async function POST(request: NextRequest) {
 
     // ─── Handle Loan Approvals ───────────────────────────────────────
     if (approval.referenceType === "loan") {
-      if (parsed.data.action === "reject") {
+      if (parsed.data.action === "hold") {
+        // Hold: move loan to next month's queue
+        const [loan] = await db
+          .select()
+          .from(loans)
+          .where(eq(loans.id, approval.referenceId));
+
+        if (loan) {
+          const now = new Date();
+          const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+          const nextPeriod = `${nextMonth.getFullYear()}-${(nextMonth.getMonth() + 1).toString().padStart(2, "0")}`;
+
+          // Get next queue number for next month
+          const [maxQueue] = await db
+            .select({ maxNum: sql<number>`COALESCE(MAX(${loans.queueNumber}), 0)` })
+            .from(loans)
+            .where(eq(loans.queuePeriod, nextPeriod));
+
+          const newQueueNumber = (maxQueue?.maxNum || 0) + 1;
+
+          // Reset approval record so it stays pending (undo the action we just set)
+          await db
+            .update(approvals)
+            .set({
+              approverId: null,
+              action: null,
+              comments: null,
+              decidedAt: null,
+            })
+            .where(eq(approvals.id, parsed.data.approvalId));
+
+          // Update loan: set held status, new queue period/number, hold reason
+          await db
+            .update(loans)
+            .set({
+              status: "held",
+              queueNumber: newQueueNumber,
+              queuePeriod: nextPeriod,
+              holdReason: parsed.data.comments || "Ditunda ke bulan berikutnya",
+              updatedAt: new Date(),
+            })
+            .where(eq(loans.id, loan.id));
+
+        }
+      } else if (parsed.data.action === "reject") {
         await db
           .update(loans)
           .set({ status: "rejected", updatedAt: new Date() })
@@ -123,6 +168,28 @@ export async function POST(request: NextRequest) {
               updatedAt: new Date(),
             })
             .where(eq(loans.id, loan.id));
+
+          // Track used quota when loan gets final approval
+          if (nextStatus === "approved" && loan.queuePeriod) {
+            const existingQuota = await db
+              .select()
+              .from(loanQuotas)
+              .where(
+                and(
+                  eq(loanQuotas.period, loan.queuePeriod),
+                  eq(loanQuotas.loanType, loan.loanType)
+                )
+              );
+            if (existingQuota.length > 0) {
+              await db
+                .update(loanQuotas)
+                .set({
+                  usedQuota: existingQuota[0].usedQuota + 1,
+                  updatedAt: new Date(),
+                })
+                .where(eq(loanQuotas.id, existingQuota[0].id));
+            }
+          }
 
           // Ketua final approval → move to SPP process, then Staf Treasury
           // handles SPP via Accurate + bank portal

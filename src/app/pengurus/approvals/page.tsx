@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ROLE_LABELS, LOAN_TYPE_LABELS, LOAN_STATUS_LABELS, formatCurrency } from "@/lib/utils";
-import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle, Download, Eye, Edit3 } from "lucide-react";
+import { CheckSquare, CreditCard, ShoppingCart, Check, X, FileText, ChevronDown, ChevronUp, User, Clock, AlertCircle, Download, Eye, Edit3, PauseCircle } from "lucide-react";
 import { PO_STATUS_LABELS } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -60,6 +60,9 @@ interface LoanData {
   createdAt: string;
   documentUrls?: string[] | null;
   formData?: Record<string, unknown> | null;
+  queueNumber?: number | null;
+  queuePeriod?: string | null;
+  holdReason?: string | null;
 }
 
 interface LoanDetail {
@@ -122,6 +125,8 @@ export default function PengurusApprovalsPage() {
   const [userDbRole, setUserDbRole] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [holdingId, setHoldingId] = useState<string | null>(null);
+  const [holdReason, setHoldReason] = useState("");
   const [managerNewPrice, setManagerNewPrice] = useState<Record<string, string>>({});
   const [managerPriceNotes, setManagerPriceNotes] = useState<Record<string, string>>({});
   const router = useRouter();
@@ -289,6 +294,32 @@ export default function PengurusApprovalsPage() {
       }
     } catch (error) {
       console.error("Rejection failed:", error);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleHold(approvalId: string) {
+    setActionLoading(approvalId);
+    try {
+      const res = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvalId,
+          action: "hold",
+          comments: holdReason.trim() || "Ditunda ke bulan berikutnya",
+        }),
+      });
+      if (res.ok) {
+        setSelectedApprovalId(null);
+        setHoldingId(null);
+        setHoldReason("");
+        setLoanDetails({});
+        loadData();
+      }
+    } catch (error) {
+      console.error("Hold action failed:", error);
     } finally {
       setActionLoading(null);
     }
@@ -617,7 +648,7 @@ export default function PengurusApprovalsPage() {
         <div className="mt-5 pt-5 border-t border-gray-100">
           {canAct ? (
             <div className="space-y-3">
-              {!isRejecting && (
+              {!isRejecting && holdingId !== approval.id && (
                 <div className="flex gap-2">
                   <button
                     onClick={(e) => {
@@ -630,6 +661,20 @@ export default function PengurusApprovalsPage() {
                     <Check className="w-4 h-4" />
                     Setujui
                   </button>
+                  {approval.referenceType === "loan" && userDbRole === "staf_treasury" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHoldingId(approval.id);
+                        setHoldReason("");
+                      }}
+                      disabled={actionLoading === approval.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-white text-orange-600 border border-orange-200 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-orange-50 transition disabled:opacity-50"
+                    >
+                      <PauseCircle className="w-4 h-4" />
+                      Tunda
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -642,6 +687,48 @@ export default function PengurusApprovalsPage() {
                     <X className="w-4 h-4" />
                     Tolak
                   </button>
+                </div>
+              )}
+
+              {holdingId === approval.id && (
+                <div className="bg-orange-50 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-medium text-orange-700">
+                    Tunda ke Bulan Depan
+                  </p>
+                  <p className="text-xs text-orange-600">
+                    Pinjaman akan ditunda dan mendapat nomor urut baru di bulan berikutnya.
+                  </p>
+                  <textarea
+                    value={holdReason}
+                    onChange={(e) => setHoldReason(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Alasan penundaan (opsional)..."
+                    rows={2}
+                    className="w-full text-sm border border-orange-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none bg-white text-gray-900 placeholder:text-gray-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleHold(approval.id);
+                      }}
+                      disabled={actionLoading === approval.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-orange-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
+                    >
+                      <PauseCircle className="w-4 h-4" />
+                      Konfirmasi Tunda
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHoldingId(null);
+                        setHoldReason("");
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-100 transition"
+                    >
+                      Batal
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1121,6 +1208,11 @@ export default function PengurusApprovalsPage() {
                           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-600">
                             {LOAN_TYPE_LABELS[detail.loan.loanType] ||
                               detail.loan.loanType}
+                          </span>
+                        )}
+                        {isLoan && detail?.loan?.queueNumber && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                            Urut #{detail.loan.queueNumber} &middot; {detail.loan.queuePeriod}
                           </span>
                         )}
                         {canAct && (
