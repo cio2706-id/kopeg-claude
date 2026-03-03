@@ -188,8 +188,8 @@ export const loanQuotas = pgTable("loan_quotas", {
   id: uuid("id").primaryKey().defaultRandom(),
   period: varchar("period", { length: 7 }).notNull(), // "YYYY-MM"
   loanType: loanTypeEnum("loan_type").notNull(),
-  quota: integer("quota").notNull().default(10),
-  usedQuota: integer("used_quota").notNull().default(0),
+  quotaAmount: numeric("quota_amount", { precision: 15, scale: 2 }).notNull().default("50000000"), // Rp quota amount
+  usedAmount: numeric("used_amount", { precision: 15, scale: 2 }).notNull().default("0"), // Rp used amount
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

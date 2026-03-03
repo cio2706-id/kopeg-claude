@@ -9,15 +9,25 @@ import {
   LOAN_TYPE_LABELS,
   LOAN_STATUS_LABELS,
 } from "@/lib/utils";
-import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save } from "lucide-react";
+import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save, Lock } from "lucide-react";
 import Link from "next/link";
 
 interface LoanQuota {
   id: string;
   period: string;
   loanType: string;
-  quota: number;
-  usedQuota: number;
+  quotaAmount: string;
+  usedAmount: string;
+}
+
+interface CrossQuotaInfo {
+  regulerQuota: number;
+  khususQuota: number;
+  regulerUsed: number;
+  khususUsed: number;
+  combinedQuota: number;
+  combinedUsed: number;
+  combinedRemaining: number;
 }
 
 interface Loan {
@@ -46,6 +56,8 @@ export default function PengurusLoansPage() {
   const [filter, setFilter] = useState<LoanFilter>("all");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [quotas, setQuotas] = useState<LoanQuota[]>([]);
+  const [crossQuota, setCrossQuota] = useState<CrossQuotaInfo | null>(null);
+  const [canSetQuota, setCanSetQuota] = useState(false);
   const [showQuotaPanel, setShowQuotaPanel] = useState(false);
   const [quotaEdits, setQuotaEdits] = useState<Record<string, string>>({});
   const [savingQuota, setSavingQuota] = useState<string | null>(null);
@@ -85,6 +97,8 @@ export default function PengurusLoansPage() {
       if (quotaRes.ok) {
         const data = await quotaRes.json();
         setQuotas(data.quotas || []);
+        setCrossQuota(data.crossQuota || null);
+        setCanSetQuota(data.canSetQuota || false);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -109,7 +123,7 @@ export default function PengurusLoansPage() {
 
   async function saveQuota(loanType: string) {
     const value = quotaEdits[loanType];
-    if (!value || isNaN(parseInt(value))) return;
+    if (!value || isNaN(parseFloat(value))) return;
 
     setSavingQuota(loanType);
     try {
@@ -119,7 +133,7 @@ export default function PengurusLoansPage() {
         body: JSON.stringify({
           period: getCurrentPeriod(),
           loanType,
-          quota: parseInt(value),
+          quotaAmount: parseFloat(value),
         }),
       });
       if (res.ok) {
@@ -297,7 +311,7 @@ export default function PengurusLoansPage() {
       </div>
 
       {/* Quota Management Toggle */}
-      {userRole === "staf_treasury" && (
+      {["staf_treasury", "manager", "bendahara", "ketua"].includes(userRole) && (
         <div className="mb-6">
           <button
             onClick={() => setShowQuotaPanel(!showQuotaPanel)}
@@ -311,15 +325,55 @@ export default function PengurusLoansPage() {
           {showQuotaPanel && (
             <div className="mt-3 bg-white rounded-2xl shadow-sm p-5">
               <p className="text-xs text-gray-500 mb-4">
-                Atur kuota maksimal pinjaman yang dapat disetujui per bulan untuk setiap jenis pinjaman.
+                Kuota pinjaman dalam Rupiah per bulan. Pinjaman Reguler (Rp 50 Jt) dan Khusus (Rp 70 Jt) berbagi kuota gabungan.
+                {!canSetQuota && (
+                  <span className="block mt-1 text-orange-500">
+                    <Lock className="w-3 h-3 inline mr-1" />
+                    Hanya Manager, Bendahara, atau Ketua yang dapat mengubah kuota.
+                  </span>
+                )}
               </p>
+
+              {/* Cross-quota info banner for Reguler + Khusus */}
+              {crossQuota && (
+                <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                  <p className="text-xs font-semibold text-blue-700 mb-2">Kuota Gabungan Reguler + Khusus</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-blue-600">
+                      {formatCurrency(crossQuota.combinedUsed)} / {formatCurrency(crossQuota.combinedQuota)}
+                    </span>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                      crossQuota.combinedRemaining <= 0
+                        ? "bg-red-50 text-red-600"
+                        : "bg-green-50 text-green-600"
+                    }`}>
+                      Sisa: {formatCurrency(Math.max(0, crossQuota.combinedRemaining))}
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-100 rounded-full h-2.5">
+                    <div
+                      className={`h-2.5 rounded-full transition-all ${
+                        crossQuota.combinedRemaining <= 0 ? "bg-red-400" : "bg-blue-500"
+                      }`}
+                      style={{ width: `${Math.min((crossQuota.combinedUsed / crossQuota.combinedQuota) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-blue-500 mt-2">
+                    Reguler: {formatCurrency(crossQuota.regulerUsed)} terpakai | Khusus: {formatCurrency(crossQuota.khususUsed)} terpakai
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(["reguler", "khusus", "barang", "travel", "channeling"] as const).map((type) => {
                   const existing = quotas.find((q) => q.loanType === type);
-                  const currentQuota = existing?.quota ?? 10;
-                  const usedQuota = existing?.usedQuota ?? 0;
+                  const DEFAULT_AMOUNTS: Record<string, number> = { reguler: 50_000_000, khusus: 70_000_000 };
+                  const currentQuotaAmt = existing ? parseFloat(existing.quotaAmount) : (DEFAULT_AMOUNTS[type] || 0);
+                  const usedAmt = existing ? parseFloat(existing.usedAmount) : 0;
                   const editValue = quotaEdits[type];
                   const isEditing = editValue !== undefined;
+                  const pct = currentQuotaAmt > 0 ? (usedAmt / currentQuotaAmt) * 100 : 0;
+                  const isRegOrKhusus = type === "reguler" || type === "khusus";
 
                   return (
                     <div key={type} className="border border-gray-100 rounded-xl p-4">
@@ -327,46 +381,60 @@ export default function PengurusLoansPage() {
                         <span className="text-sm font-medium text-gray-900">
                           {LOAN_TYPE_LABELS[type] || type}
                         </span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          usedQuota >= currentQuota
-                            ? "bg-red-50 text-red-600"
-                            : "bg-green-50 text-green-600"
-                        }`}>
-                          {usedQuota}/{currentQuota}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
-                        <div
-                          className={`h-2 rounded-full transition-all ${
-                            usedQuota >= currentQuota ? "bg-red-400" : "bg-teal-400"
-                          }`}
-                          style={{ width: `${Math.min((usedQuota / currentQuota) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          max="999"
-                          value={isEditing ? editValue : currentQuota}
-                          onChange={(e) => setQuotaEdits((prev) => ({ ...prev, [type]: e.target.value }))}
-                          className="w-20 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-teal-300 outline-none"
-                        />
-                        {isEditing && (
-                          <button
-                            onClick={() => saveQuota(type)}
-                            disabled={savingQuota === type}
-                            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition disabled:opacity-50"
-                          >
-                            {savingQuota === type ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Save className="w-3 h-3" />
-                            )}
-                            Simpan
-                          </button>
+                        {isRegOrKhusus && (
+                          <span className="text-[9px] text-blue-400 px-1.5 py-0.5 bg-blue-50 rounded-full">Berbagi</span>
                         )}
                       </div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-500">Terpakai</span>
+                        <span className={`text-xs font-medium ${
+                          usedAmt >= currentQuotaAmt && currentQuotaAmt > 0
+                            ? "text-red-600"
+                            : "text-green-600"
+                        }`}>
+                          {formatCurrency(usedAmt)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            pct >= 100 ? "bg-red-400" : "bg-teal-400"
+                          }`}
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] text-gray-400">Kuota</span>
+                        <span className="text-xs font-semibold text-gray-700">{formatCurrency(currentQuotaAmt)}</span>
+                      </div>
+                      {canSetQuota ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1000000"
+                            value={isEditing ? editValue : currentQuotaAmt}
+                            onChange={(e) => setQuotaEdits((prev) => ({ ...prev, [type]: e.target.value }))}
+                            className="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-teal-300 outline-none"
+                          />
+                          {isEditing && (
+                            <button
+                              onClick={() => saveQuota(type)}
+                              disabled={savingQuota === type}
+                              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition disabled:opacity-50"
+                            >
+                              {savingQuota === type ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Save className="w-3 h-3" />
+                              )}
+                              Simpan
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-gray-400 italic">Hanya bisa dilihat</div>
+                      )}
                     </div>
                   );
                 })}

@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { loanQuotas } from "@/lib/db/schema";
+import { loanQuotas, loans } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
+
+// Default quota amounts (in Rupiah)
+const DEFAULT_QUOTAS: Record<string, number> = {
+  reguler: 50_000_000,
+  khusus: 70_000_000,
+};
 
 const quotaSchema = z.object({
   period: z.string().regex(/^\d{4}-\d{2}$/),
   loanType: z.enum(["reguler", "khusus", "barang", "travel", "channeling"]),
-  quota: z.number().int().min(1).max(999),
+  quotaAmount: z.number().min(0), // Rupiah amount
 });
 
-const TREASURY_ROLES = ["staf_treasury", "manager", "bendahara", "ketua"];
+// Roles that can VIEW quotas
+const VIEW_ROLES = ["staf_treasury", "manager", "bendahara", "ketua"];
+// Roles that can SET/MODIFY quotas
+const SET_ROLES = ["manager", "bendahara", "ketua"];
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +33,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const dbUser = await getOrCreateUser(authUser);
-    if (!TREASURY_ROLES.includes(dbUser.role)) {
+    if (!VIEW_ROLES.includes(dbUser.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -35,7 +44,63 @@ export async function GET(request: NextRequest) {
       ? await db.select().from(loanQuotas).where(eq(loanQuotas.period, period))
       : await db.select().from(loanQuotas);
 
-    return NextResponse.json({ quotas });
+    // Calculate actual used amounts from approved loans
+    if (period) {
+      const approvedStatuses = ["approved", "spp_process", "bank_process", "disbursed", "selesai"] as const;
+      const approvedLoans = await db
+        .select({
+          loanType: loans.loanType,
+          totalAmount: sql<string>`COALESCE(SUM(${loans.amount}::NUMERIC), 0)`,
+        })
+        .from(loans)
+        .where(
+          and(
+            eq(loans.queuePeriod, period),
+            inArray(loans.status, [...approvedStatuses])
+          )
+        )
+        .groupBy(loans.loanType);
+
+      const usedByType: Record<string, number> = {};
+      for (const row of approvedLoans) {
+        usedByType[row.loanType] = parseFloat(row.totalAmount || "0");
+      }
+
+      // Enrich quotas with real-time used amounts
+      const enrichedQuotas = quotas.map((q) => ({
+        ...q,
+        usedAmount: (usedByType[q.loanType] || 0).toString(),
+      }));
+
+      // Calculate cross-quota info for reguler/khusus
+      const regulerQuota = quotas.find((q) => q.loanType === "reguler");
+      const khususQuota = quotas.find((q) => q.loanType === "khusus");
+      const regulerQuotaAmt = parseFloat(regulerQuota?.quotaAmount || DEFAULT_QUOTAS.reguler.toString());
+      const khususQuotaAmt = parseFloat(khususQuota?.quotaAmount || DEFAULT_QUOTAS.khusus.toString());
+      const regulerUsed = usedByType["reguler"] || 0;
+      const khususUsed = usedByType["khusus"] || 0;
+      const combinedQuota = regulerQuotaAmt + khususQuotaAmt;
+      const combinedUsed = regulerUsed + khususUsed;
+
+      return NextResponse.json({
+        quotas: enrichedQuotas,
+        crossQuota: {
+          regulerQuota: regulerQuotaAmt,
+          khususQuota: khususQuotaAmt,
+          regulerUsed,
+          khususUsed,
+          combinedQuota,
+          combinedUsed,
+          combinedRemaining: combinedQuota - combinedUsed,
+        },
+        canSetQuota: SET_ROLES.includes(dbUser.role),
+      });
+    }
+
+    return NextResponse.json({
+      quotas,
+      canSetQuota: SET_ROLES.includes(dbUser.role),
+    });
   } catch (error) {
     console.error("Failed to fetch quotas:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -52,8 +117,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const dbUser = await getOrCreateUser(authUser);
-    if (!TREASURY_ROLES.includes(dbUser.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    // Only Manager, Bendahara, Ketua can set quotas
+    if (!SET_ROLES.includes(dbUser.role)) {
+      return NextResponse.json(
+        { error: "Hanya Manager, Bendahara, atau Ketua yang dapat mengatur kuota pinjaman" },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
@@ -77,7 +147,7 @@ export async function POST(request: NextRequest) {
       // Update existing quota
       const [updated] = await db
         .update(loanQuotas)
-        .set({ quota: parsed.data.quota, updatedAt: new Date() })
+        .set({ quotaAmount: parsed.data.quotaAmount.toString(), updatedAt: new Date() })
         .where(eq(loanQuotas.id, existing[0].id))
         .returning();
       return NextResponse.json({ quota: updated });
@@ -89,7 +159,7 @@ export async function POST(request: NextRequest) {
       .values({
         period: parsed.data.period,
         loanType: parsed.data.loanType,
-        quota: parsed.data.quota,
+        quotaAmount: parsed.data.quotaAmount.toString(),
       })
       .returning();
 

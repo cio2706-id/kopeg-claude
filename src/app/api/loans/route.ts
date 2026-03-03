@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { loans, approvals } from "@/lib/db/schema";
+import { loans, approvals, loanQuotas } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS } from "@/lib/utils";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { LOAN_COA_MAP } from "@/lib/accurate";
 
@@ -75,6 +75,66 @@ export async function POST(request: NextRequest) {
 
     const queueNumber = (maxQueue?.maxNum || 0) + 1;
 
+    // Check if quota is already exceeded for this period/type → auto-hold
+    let shouldHold = false;
+    let holdReason = "";
+
+    if (!isChanneling) {
+      const DEFAULT_QUOTAS: Record<string, number> = {
+        reguler: 50_000_000,
+        khusus: 70_000_000,
+      };
+
+      const approvedStatuses = ["approved", "spp_process", "bank_process", "disbursed", "selesai"] as const;
+      const usedAmounts = await db
+        .select({
+          loanType: loans.loanType,
+          totalAmount: sql<string>`COALESCE(SUM(${loans.amount}::NUMERIC), 0)`,
+        })
+        .from(loans)
+        .where(
+          and(
+            eq(loans.queuePeriod, queuePeriod),
+            inArray(loans.status, [...approvedStatuses])
+          )
+        )
+        .groupBy(loans.loanType);
+
+      const usedByType: Record<string, number> = {};
+      for (const row of usedAmounts) {
+        usedByType[row.loanType] = parseFloat(row.totalAmount || "0");
+      }
+
+      const periodQuotas = await db
+        .select()
+        .from(loanQuotas)
+        .where(eq(loanQuotas.period, queuePeriod));
+
+      const getQuotaForType = (type: string) => {
+        const q = periodQuotas.find((pq) => pq.loanType === type);
+        return q ? parseFloat(q.quotaAmount) : (DEFAULT_QUOTAS[type] || 0);
+      };
+
+      const loanType = parsed.data.loanType;
+      const loanAmount = parsed.data.amount;
+
+      if (loanType === "reguler" || loanType === "khusus") {
+        const combinedQuota = getQuotaForType("reguler") + getQuotaForType("khusus");
+        const combinedUsed = (usedByType["reguler"] || 0) + (usedByType["khusus"] || 0);
+        if (combinedUsed + loanAmount > combinedQuota) {
+          shouldHold = true;
+          holdReason = `Kuota pinjaman gabungan reguler+khusus bulan ${queuePeriod} telah terlampaui.`;
+        }
+      } else {
+        const ownQuota = getQuotaForType(loanType);
+        const ownUsed = usedByType[loanType] || 0;
+        if (ownQuota > 0 && ownUsed + loanAmount > ownQuota) {
+          shouldHold = true;
+          holdReason = `Kuota pinjaman ${loanType} bulan ${queuePeriod} telah terlampaui.`;
+        }
+      }
+    }
+
     const [loan] = await db
       .insert(loans)
       .values({
@@ -88,14 +148,15 @@ export async function POST(request: NextRequest) {
         purpose: parsed.data.purpose,
         formData: parsed.data.formData || null,
         documentUrls: parsed.data.documentUrls || null,
-        status: isChanneling ? "on_review" : "pending_treasury",
+        status: isChanneling ? "on_review" : shouldHold ? "held" : "pending_treasury",
         coaCode,
         queueNumber,
         queuePeriod,
+        holdReason: shouldHold ? holdReason : null,
       })
       .returning();
 
-    // Only create approval chain for non-channeling loans
+    // Only create approval chain for non-channeling, non-held loans
     if (!isChanneling) {
       await db.insert(approvals).values(
         LOAN_APPROVAL_STEPS.map((step) => ({
@@ -108,7 +169,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ loan, trackingNumber, isChanneling });
+    return NextResponse.json({ loan, trackingNumber, isChanneling, held: shouldHold });
   } catch (error) {
     console.error("Failed to create loan:", error);
     const message =

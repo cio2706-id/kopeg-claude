@@ -11,7 +11,7 @@ import {
 } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import {
   insertJournal,
   LOAN_COA_MAP,
@@ -161,6 +161,116 @@ export async function POST(request: NextRequest) {
           }
 
           const nextStatus = LOAN_STATUS_FLOW[loan.status] || loan.status;
+
+          // ── Quota check before final approval (auto-hold if exceeded) ──
+          if (nextStatus === "approved" && loan.queuePeriod) {
+            const DEFAULT_QUOTAS: Record<string, number> = {
+              reguler: 50_000_000,
+              khusus: 70_000_000,
+            };
+
+            const loanAmount = parseFloat(loan.amount);
+            const loanType = loan.loanType;
+
+            // Get current used amounts for this period
+            const approvedStatuses = ["approved", "spp_process", "bank_process", "disbursed", "selesai"] as const;
+            const usedAmounts = await db
+              .select({
+                loanType: loans.loanType,
+                totalAmount: sql<string>`COALESCE(SUM(${loans.amount}::NUMERIC), 0)`,
+              })
+              .from(loans)
+              .where(
+                and(
+                  eq(loans.queuePeriod, loan.queuePeriod),
+                  inArray(loans.status, [...approvedStatuses])
+                )
+              )
+              .groupBy(loans.loanType);
+
+            const usedByType: Record<string, number> = {};
+            for (const row of usedAmounts) {
+              usedByType[row.loanType] = parseFloat(row.totalAmount || "0");
+            }
+
+            // Get quota settings for this period
+            const periodQuotas = await db
+              .select()
+              .from(loanQuotas)
+              .where(eq(loanQuotas.period, loan.queuePeriod));
+
+            const getQuotaForType = (type: string) => {
+              const q = periodQuotas.find((pq) => pq.loanType === type);
+              return q ? parseFloat(q.quotaAmount) : (DEFAULT_QUOTAS[type] || 0);
+            };
+
+            const regulerQuota = getQuotaForType("reguler");
+            const khususQuota = getQuotaForType("khusus");
+            const regulerUsed = usedByType["reguler"] || 0;
+            const khususUsed = usedByType["khusus"] || 0;
+
+            let quotaExceeded = false;
+
+            if (loanType === "reguler" || loanType === "khusus") {
+              // Cross-usage: reguler and khusus share a combined pool
+              const combinedQuota = regulerQuota + khususQuota;
+              const combinedUsed = regulerUsed + khususUsed;
+
+              if (combinedUsed + loanAmount > combinedQuota) {
+                quotaExceeded = true;
+              }
+            } else {
+              // Other types: check own quota only
+              const ownQuota = getQuotaForType(loanType);
+              const ownUsed = usedByType[loanType] || 0;
+              if (ownQuota > 0 && ownUsed + loanAmount > ownQuota) {
+                quotaExceeded = true;
+              }
+            }
+
+            if (quotaExceeded) {
+              // Auto-hold: move loan to held status with next month queue
+              const now = new Date();
+              const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+              const nextPeriod = `${nextMonth.getFullYear()}-${(nextMonth.getMonth() + 1).toString().padStart(2, "0")}`;
+
+              const [maxQueue] = await db
+                .select({ maxNum: sql<number>`COALESCE(MAX(${loans.queueNumber}), 0)` })
+                .from(loans)
+                .where(eq(loans.queuePeriod, nextPeriod));
+
+              const newQueueNumber = (maxQueue?.maxNum || 0) + 1;
+
+              // Reset approval record
+              await db
+                .update(approvals)
+                .set({
+                  approverId: null,
+                  action: null,
+                  comments: null,
+                  decidedAt: null,
+                })
+                .where(eq(approvals.id, parsed.data.approvalId));
+
+              await db
+                .update(loans)
+                .set({
+                  status: "held",
+                  queueNumber: newQueueNumber,
+                  queuePeriod: nextPeriod,
+                  holdReason: `Kuota pinjaman bulan ini telah terlampaui. Dipindahkan ke bulan ${nextPeriod}.`,
+                  updatedAt: new Date(),
+                })
+                .where(eq(loans.id, loan.id));
+
+              return NextResponse.json({
+                success: true,
+                held: true,
+                message: `Pinjaman otomatis ditunda karena kuota bulan ${loan.queuePeriod} telah terlampaui.`,
+              });
+            }
+          }
+
           await db
             .update(loans)
             .set({
@@ -169,8 +279,9 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(loans.id, loan.id));
 
-          // Track used quota when loan gets final approval
+          // Update used_amount in quota when loan gets final approval
           if (nextStatus === "approved" && loan.queuePeriod) {
+            const loanAmount = parseFloat(loan.amount);
             const existingQuota = await db
               .select()
               .from(loanQuotas)
@@ -181,10 +292,11 @@ export async function POST(request: NextRequest) {
                 )
               );
             if (existingQuota.length > 0) {
+              const currentUsed = parseFloat(existingQuota[0].usedAmount || "0");
               await db
                 .update(loanQuotas)
                 .set({
-                  usedQuota: existingQuota[0].usedQuota + 1,
+                  usedAmount: (currentUsed + loanAmount).toString(),
                   updatedAt: new Date(),
                 })
                 .where(eq(loanQuotas.id, existingQuota[0].id));
