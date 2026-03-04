@@ -71,6 +71,7 @@ const LOAN_COA: Record<string, string> = {
   khusus: "110305",
   barang: "110306",
   travel: "110307",
+  kepemilikan_kendaraan: "110308",
   channeling_mandiri: "-",
   channeling_bsi: "-",
 };
@@ -80,6 +81,7 @@ const LOAN_MAX: Record<string, number> = {
   khusus: 30_000_000,
   barang: 20_000_000,
   travel: 15_000_000,
+  kepemilikan_kendaraan: 50_000_000,
   channeling_mandiri: 100_000_000,
   channeling_bsi: 100_000_000,
 };
@@ -89,6 +91,7 @@ const LOAN_COLORS: Record<string, string> = {
   khusus: "#6366f1",
   barang: "#f59e0b",
   travel: "#ef4444",
+  kepemilikan_kendaraan: "#0ea5e9",
   channeling_mandiri: "#3b82f6",
   channeling_bsi: "#8b5cf6",
 };
@@ -98,6 +101,7 @@ const LOAN_TYPE_LABELS_EXTENDED: Record<string, string> = {
   khusus: "Pinjaman Khusus",
   barang: "Pinjaman Barang",
   travel: "Pinjaman Travel",
+  kepemilikan_kendaraan: "Pinjaman Kendaraan",
   channeling_mandiri: "Channeling Mandiri",
   channeling_bsi: "Channeling BSI",
 };

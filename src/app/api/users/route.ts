@@ -18,7 +18,7 @@ export async function GET() {
 const createUserSchema = z.object({
   fullName: z.string().min(1, "Nama wajib diisi"),
   email: z.string().email("Email tidak valid"),
-  role: z.enum(["member", "staf_pengadaan", "staf_treasury", "staf_piutang", "staf_akunting", "manager", "bendahara", "sekertaris", "ketua"]).default("member"),
+  role: z.enum(["member", "staf_pengadaan", "staf_treasury", "staf_sekper", "staf_piutang", "staf_akunting", "manager", "bendahara", "sekertaris", "ketua"]).default("member"),
   phone: z.string().optional(),
   employeeId: z.string().optional(),
   department: z.string().optional(),
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 const updateUserSchema = z.object({
   id: z.string().uuid(),
   fullName: z.string().min(1).optional(),
-  role: z.enum(["member", "staf_pengadaan", "staf_treasury", "staf_piutang", "staf_akunting", "manager", "bendahara", "sekertaris", "ketua"]).optional(),
+  role: z.enum(["member", "staf_pengadaan", "staf_treasury", "staf_sekper", "staf_piutang", "staf_akunting", "manager", "bendahara", "sekertaris", "ketua"]).optional(),
   phone: z.string().optional(),
   department: z.string().optional(),
   isActive: z.boolean().optional(),

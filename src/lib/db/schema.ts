@@ -17,6 +17,7 @@ export const userRoleEnum = pgEnum("user_role", [
   "member",
   "staf_pengadaan",
   "staf_treasury",
+  "staf_sekper",
   "staf_piutang",
   "staf_akunting",
   "manager",
@@ -27,6 +28,7 @@ export const userRoleEnum = pgEnum("user_role", [
 
 export const loanStatusEnum = pgEnum("loan_status", [
   "draft",
+  "pending_sekper",
   "pending_treasury",
   "analysis",
   "pending_manager",
@@ -82,6 +84,7 @@ export const loanTypeEnum = pgEnum("loan_type", [
   "khusus",
   "barang",
   "travel",
+  "kepemilikan_kendaraan",
   "channeling",
 ]);
 

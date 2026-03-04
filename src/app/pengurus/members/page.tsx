@@ -22,6 +22,7 @@ const ALL_ROLES = [
   "member",
   "staf_pengadaan",
   "staf_treasury",
+  "staf_sekper",
   "staf_piutang",
   "staf_akunting",
   "manager",

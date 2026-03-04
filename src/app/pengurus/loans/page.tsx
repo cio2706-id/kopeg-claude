@@ -180,7 +180,7 @@ export default function PengurusLoansPage() {
     switch (status) {
       case "spp_process": return { label: "Buat SPP", nextStatus: "", needsInput: "spp", requiredRole: "staf_treasury" };
       case "bank_process": return { label: "Dana Dicairkan", nextStatus: "disbursed", requiredRole: "staf_treasury" };
-      case "held": return { label: "Proses Ulang", nextStatus: "pending_treasury", requiredRole: "staf_treasury", icon: "resume" };
+      case "held": return { label: "Proses Ulang", nextStatus: "pending_sekper", requiredRole: "staf_sekper", icon: "resume" };
       default: return null;
     }
   }
@@ -311,7 +311,7 @@ export default function PengurusLoansPage() {
       </div>
 
       {/* Quota Management Toggle */}
-      {["staf_treasury", "manager", "bendahara", "ketua"].includes(userRole) && (
+      {["staf_treasury", "staf_sekper", "manager", "bendahara", "ketua"].includes(userRole) && (
         <div className="mb-6">
           <button
             onClick={() => setShowQuotaPanel(!showQuotaPanel)}

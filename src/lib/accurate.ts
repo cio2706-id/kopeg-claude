@@ -188,6 +188,7 @@ export const LOAN_COA_MAP: Record<string, string> = {
   khusus: "110305",
   barang: "110306",
   travel: "110307",
+  kepemilikan_kendaraan: "110308",
 };
 
 // ─── GL Account Balances ─────────────────────────────────────────────────────

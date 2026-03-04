@@ -14,12 +14,12 @@ const DEFAULT_QUOTAS: Record<string, number> = {
 
 const quotaSchema = z.object({
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  loanType: z.enum(["reguler", "khusus", "barang", "travel", "channeling"]),
+  loanType: z.enum(["reguler", "khusus", "barang", "travel", "kepemilikan_kendaraan", "channeling"]),
   quotaAmount: z.number().min(0), // Rupiah amount
 });
 
 // Roles that can VIEW quotas
-const VIEW_ROLES = ["staf_treasury", "manager", "bendahara", "ketua"];
+const VIEW_ROLES = ["staf_treasury", "staf_sekper", "manager", "bendahara", "ketua"];
 // Roles that can SET/MODIFY quotas
 const SET_ROLES = ["manager", "bendahara", "ketua"];
 

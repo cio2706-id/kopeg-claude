@@ -143,9 +143,9 @@ export async function POST(request: NextRequest) {
           .where(eq(loans.id, approval.referenceId));
 
         if (loan) {
-          // Staf Treasury step: save credit analysis data
+          // Staf Sekper step: save credit analysis data
           if (
-            dbUser.role === "staf_treasury" &&
+            (dbUser.role === "staf_sekper" || dbUser.role === "staf_treasury") &&
             (parsed.data.creditAnalysis || parsed.data.creditScore)
           ) {
             await db

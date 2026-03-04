@@ -18,7 +18,7 @@ import { generateInstallmentSchedule } from "@/lib/utils";
  *   - Deduct 1% admin fee, add 1% to simpanan khusus
  */
 const statusUpdateSchema = z.object({
-  status: z.enum(["bank_process", "disbursed", "pending_treasury"]),
+  status: z.enum(["bank_process", "disbursed", "pending_sekper", "pending_treasury"]),
   bankPortalRef: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -26,7 +26,7 @@ const statusUpdateSchema = z.object({
 const ALLOWED_TRANSITIONS: Record<string, { nextStatuses: string[]; allowedRoles: string[] }> = {
   spp_process: { nextStatuses: ["bank_process"], allowedRoles: ["staf_treasury"] },
   bank_process: { nextStatuses: ["disbursed"], allowedRoles: ["staf_treasury"] },
-  held: { nextStatuses: ["pending_treasury"], allowedRoles: ["staf_treasury"] },
+  held: { nextStatuses: ["pending_sekper"], allowedRoles: ["staf_treasury", "staf_sekper"] },
 };
 
 export async function PATCH(

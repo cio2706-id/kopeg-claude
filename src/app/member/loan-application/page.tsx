@@ -17,6 +17,9 @@ import {
   Phone,
   ArrowLeft,
   Landmark,
+  Plane,
+  Car,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -24,7 +27,7 @@ import { formatCurrency, calculateMonthlyInstallment } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type LoanType = "reguler" | "khusus" | "barang" | "channeling";
+type LoanType = "reguler" | "khusus" | "barang" | "travel" | "kepemilikan_kendaraan" | "channeling";
 
 interface LoanTypeConfig {
   label: string;
@@ -65,6 +68,22 @@ const LOAN_TYPES: Record<LoanType, LoanTypeConfig> = {
     rate: 8,
     icon: <Package className="w-6 h-6" />,
     colors: { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", icon: "text-purple-600" },
+  },
+  travel: {
+    label: "Pinjaman Travel",
+    description: "Pinjaman untuk keperluan perjalanan",
+    coa: "110307",
+    rate: 10,
+    icon: <Plane className="w-6 h-6" />,
+    colors: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", icon: "text-red-600" },
+  },
+  kepemilikan_kendaraan: {
+    label: "Pinjaman Kepemilikan Kendaraan",
+    description: "Pinjaman untuk pembelian kendaraan",
+    coa: "110308",
+    rate: 8,
+    icon: <Car className="w-6 h-6" />,
+    colors: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", icon: "text-sky-600" },
   },
   channeling: {
     label: "Pinjaman Channeling",
@@ -168,6 +187,7 @@ export default function LoanApplicationPage() {
   const [userEmail, setUserEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
   const [loanBalanceTotal, setLoanBalanceTotal] = useState<number>(0);
+  const [existingMonthlyInstallment, setExistingMonthlyInstallment] = useState<number>(0);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -181,17 +201,31 @@ export default function LoanApplicationPage() {
     setUserEmail(user.email || "");
     setAuthLoading(false);
 
-    // Fetch loan balances to auto-fill "Sisa Pinjaman Yang Lalu"
+    // Fetch loan balances and existing installments
     try {
-      const res = await fetch("/api/member-balances");
-      if (res.ok) {
-        const data = await res.json();
+      const [balRes, loansRes] = await Promise.all([
+        fetch("/api/member-balances"),
+        fetch("/api/loans"),
+      ]);
+      if (balRes.ok) {
+        const data = await balRes.json();
         const total = data.pinjaman?.total || 0;
         setLoanBalanceTotal(total);
         if (total > 0) {
           setPreviousBalance(total.toString());
           setBarangPreviousBalance(total.toString());
         }
+      }
+      if (loansRes.ok) {
+        const loansData = await loansRes.json();
+        const activeLoans = (loansData.loans || []).filter(
+          (l: { status: string }) => !["rejected", "draft", "selesai", "held"].includes(l.status)
+        );
+        const totalMonthly = activeLoans.reduce(
+          (sum: number, l: { monthlyInstallment: string }) => sum + parseFloat(l.monthlyInstallment || "0"),
+          0
+        );
+        setExistingMonthlyInstallment(totalMonthly);
       }
     } catch {
       // Silently ignore - balance fields remain editable
@@ -218,8 +252,10 @@ export default function LoanApplicationPage() {
   // ─── Build formData based on type ──────────────────────────────────────────
 
   function buildFormData(): Record<string, unknown> {
+    const commonIncome = { penghasilanBruto: penghasilanBruto ? parseFloat(penghasilanBruto) : 0 };
     if (loanType === "reguler") {
       return {
+        ...commonIncome,
         loanCriteria,
         musibahType: loanCriteria === "musibah" ? musibahType : undefined,
         requestMonth,
@@ -241,14 +277,15 @@ export default function LoanApplicationPage() {
         telpExt,
         mulaiKerjaSejak,
         namaAtasan,
-        penghasilanBruto: penghasilanBruto ? parseFloat(penghasilanBruto) : 0,
+        ...commonIncome,
         namaBank,
         nomorRekening,
         atasNamaRekening,
       };
     }
-    if (loanType === "barang") {
+    if (loanType === "barang" || loanType === "travel" || loanType === "kepemilikan_kendaraan") {
       return {
+        ...commonIncome,
         unitKerja: barangUnitKerja,
         statusKepegawaian,
         jenisKebutuhan,
@@ -271,6 +308,30 @@ export default function LoanApplicationPage() {
     setLoading(true);
     setError(null);
 
+    // Validate penghasilan bruto is filled
+    if (!penghasilanBruto || parseFloat(penghasilanBruto) <= 0) {
+      setError("Penghasilan Bruto / Bulan wajib diisi");
+      setLoading(false);
+      return;
+    }
+
+    // 40% cicilan validation
+    if (loanType && loanType !== "channeling" && loanType !== "barang") {
+      const income = parseFloat(penghasilanBruto);
+      const newInstallment = calculateMonthlyInstallment(
+        parseFloat(amount),
+        LOAN_TYPES[loanType as LoanType]?.rate || 0,
+        parseInt(tenor)
+      );
+      const totalCicilan = existingMonthlyInstallment + newInstallment;
+      const maxCicilan = income * 0.4;
+      if (totalCicilan > maxCicilan) {
+        setError("Pinjaman anda tidak dapat di proses karena jumlah cicilan melebihi 40% dari pendapatan bulanan anda. Silahkan hubungi tim Koperasi.");
+        setLoading(false);
+        return;
+      }
+    }
+
     if (!documentFile) {
       setError("Dokumen Pendukung wajib diupload");
       setLoading(false);
@@ -289,7 +350,8 @@ export default function LoanApplicationPage() {
       }
 
       const config = LOAN_TYPES[loanType as LoanType];
-      const loanAmount = loanType === "barang" ? 1 : parseFloat(amount);
+      const isItemLoan = loanType === "barang" || loanType === "travel" || loanType === "kepemilikan_kendaraan";
+      const loanAmount = isItemLoan ? 1 : parseFloat(amount);
       const res = await fetch("/api/loans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -380,11 +442,18 @@ export default function LoanApplicationPage() {
 
   const selectedLoan = loanType ? LOAN_TYPES[loanType as LoanType] : null;
   const interestRate = selectedLoan ? selectedLoan.rate : 0;
+  const isItemLoan = loanType === "barang" || loanType === "travel" || loanType === "kepemilikan_kendaraan";
   const monthlyInstallment =
     amount && tenor && loanType && loanType !== "channeling"
       ? calculateMonthlyInstallment(parseFloat(amount), interestRate, parseInt(tenor))
       : 0;
   const totalRepayment = monthlyInstallment * (parseInt(tenor) || 0);
+
+  // 40% income ratio calculation
+  const incomeValue = penghasilanBruto ? parseFloat(penghasilanBruto) : 0;
+  const totalCicilanWithNew = existingMonthlyInstallment + monthlyInstallment;
+  const maxAllowedCicilan = incomeValue * 0.4;
+  const cicilanExceeds40 = incomeValue > 0 && !isItemLoan && monthlyInstallment > 0 && totalCicilanWithNew > maxAllowedCicilan;
 
   // ─── Loading ───────────────────────────────────────────────────────────────
 
@@ -441,7 +510,7 @@ export default function LoanApplicationPage() {
                 <p className="text-sm font-semibold text-gray-900 mb-3">Alur Persetujuan:</p>
                 <div className="space-y-3">
                   {[
-                    "Staf Treasury (Review & Analisa Kredit)",
+                    "Staf Sekper (Review & Analisa Kredit)",
                     "Manager (Review & Evaluasi Keuangan)",
                     "Bendahara (Review & Evaluasi Keuangan)",
                     "Ketua (Persetujuan Akhir)",
@@ -508,6 +577,26 @@ export default function LoanApplicationPage() {
       items: [
         "Pinjaman untuk pembelian barang konsumsi.",
         "Harga barang akan ditentukan oleh Pengurus.",
+        "Pemohon berjanji akan mematuhi ketentuan pinjaman yang ditetapkan Koperasi Pegawai BKI.",
+        "Apabila pemohon tidak lagi menjadi anggota / pegawai PT BKI, seluruh hutang akan dilunasi sekaligus.",
+        "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
+      ],
+    },
+    travel: {
+      title: "Syarat & Ketentuan Pinjaman Travel",
+      items: [
+        "Pinjaman untuk keperluan perjalanan (travel).",
+        "Harga paket akan ditentukan oleh Pengurus.",
+        "Pemohon berjanji akan mematuhi ketentuan pinjaman yang ditetapkan Koperasi Pegawai BKI.",
+        "Apabila pemohon tidak lagi menjadi anggota / pegawai PT BKI, seluruh hutang akan dilunasi sekaligus.",
+        "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
+      ],
+    },
+    kepemilikan_kendaraan: {
+      title: "Syarat & Ketentuan Pinjaman Kepemilikan Kendaraan",
+      items: [
+        "Pinjaman untuk pembelian kendaraan bermotor.",
+        "Harga kendaraan akan ditentukan oleh Pengurus.",
         "Pemohon berjanji akan mematuhi ketentuan pinjaman yang ditetapkan Koperasi Pegawai BKI.",
         "Apabila pemohon tidak lagi menjadi anggota / pegawai PT BKI, seluruh hutang akan dilunasi sekaligus.",
         "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
@@ -826,7 +915,7 @@ export default function LoanApplicationPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
             <h2 className="font-semibold text-gray-900">Data Pinjaman</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {loanType !== "barang" && (
+              {!isItemLoan && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Pinjaman (Rp) *</label>
                   <input
@@ -844,9 +933,11 @@ export default function LoanApplicationPage() {
                   )}
                 </div>
               )}
-              {loanType === "barang" && (
+              {isItemLoan && (
                 <div>
-                  <p className="block text-sm font-medium text-gray-700 mb-2">Harga Barang</p>
+                  <p className="block text-sm font-medium text-gray-700 mb-2">
+                    {loanType === "travel" ? "Harga Paket" : loanType === "kepemilikan_kendaraan" ? "Harga Kendaraan" : "Harga Barang"}
+                  </p>
                   <p className="text-sm text-gray-500 italic py-3">Akan ditentukan oleh Pengurus</p>
                 </div>
               )}
@@ -865,6 +956,49 @@ export default function LoanApplicationPage() {
                 </select>
               </div>
             </div>
+
+            {/* ── Penghasilan Bruto (required for all non-channeling types) ── */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Penghasilan Bruto / Bulan (Rp) *</label>
+              <input
+                type="number"
+                value={penghasilanBruto}
+                onChange={(e) => setPenghasilanBruto(e.target.value)}
+                required
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                placeholder="Contoh: 15000000"
+              />
+              <p className="text-xs text-gray-400 mt-1">Gaji kotor per bulan sebelum potongan</p>
+            </div>
+
+            {/* ── 40% Cicilan Warning ── */}
+            {cicilanExceeds40 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-800 mb-1">Cicilan Melebihi 40% Pendapatan</p>
+                  <p className="text-xs text-red-700">
+                    Total cicilan ({formatCurrency(totalCicilanWithNew)}) melebihi 40% dari pendapatan bulanan ({formatCurrency(maxAllowedCicilan)}).
+                    Pinjaman tidak dapat diproses.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Cicilan Ratio Info ── */}
+            {incomeValue > 0 && monthlyInstallment > 0 && !isItemLoan && !cicilanExceeds40 && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                <p className="text-xs text-green-700">
+                  Rasio cicilan: {formatCurrency(totalCicilanWithNew)} / {formatCurrency(maxAllowedCicilan)} (maks 40% pendapatan)
+                  {existingMonthlyInstallment > 0 && (
+                    <span className="block mt-1 text-green-600">
+                      Termasuk cicilan pinjaman aktif: {formatCurrency(existingMonthlyInstallment)}/bulan
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Tujuan Pinjaman *</label>
               <textarea
@@ -1108,17 +1242,6 @@ export default function LoanApplicationPage() {
                 <h2 className="font-semibold text-gray-900">Data Keuangan</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Penghasilan Bruto / Bulan (Rp) *</label>
-                    <input
-                      type="number"
-                      value={penghasilanBruto}
-                      onChange={(e) => setPenghasilanBruto(e.target.value)}
-                      required
-                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
-                      placeholder="Contoh: 15000000"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Nama Bank *</label>
                     <input
                       type="text"
@@ -1165,10 +1288,12 @@ export default function LoanApplicationPage() {
             </>
           )}
 
-          {/* ── Barang-specific fields ──────────────────────────────────────── */}
-          {loanType === "barang" && (
+          {/* ── Barang/Travel/Kendaraan-specific fields ────────────────────── */}
+          {isItemLoan && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
-              <h2 className="font-semibold text-gray-900">Data Pinjaman Barang</h2>
+              <h2 className="font-semibold text-gray-900">
+                {loanType === "travel" ? "Data Pinjaman Travel" : loanType === "kepemilikan_kendaraan" ? "Data Pinjaman Kendaraan" : "Data Pinjaman Barang"}
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Unit Kerja *</label>
@@ -1392,7 +1517,7 @@ export default function LoanApplicationPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-3">
             <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-800">
-              Setelah diajukan, pinjaman akan direview oleh Staf Treasury (analisa kredit), Manager, Bendahara,
+              Setelah diajukan, pinjaman akan direview oleh Staf Sekper (analisa kredit), Manager, Bendahara,
               dan Ketua untuk persetujuan akhir. Formulir dapat diunduh sebelum persetujuan Ketua dan proses SPP.
             </p>
           </div>
@@ -1405,7 +1530,7 @@ export default function LoanApplicationPage() {
 
           <button
             type="submit"
-            disabled={loading || !loanType || (!amount && loanType !== "barang") || !tenor || !documentFile}
+            disabled={loading || !loanType || (!amount && !isItemLoan) || !tenor || !documentFile || !penghasilanBruto || cicilanExceeds40}
             className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
           >
             {loading ? (

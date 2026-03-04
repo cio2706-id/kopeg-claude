@@ -9,7 +9,7 @@ import { z } from "zod";
 import { LOAN_COA_MAP } from "@/lib/accurate";
 
 const loanSchema = z.object({
-  loanType: z.enum(["reguler", "khusus", "barang", "travel", "channeling"]),
+  loanType: z.enum(["reguler", "khusus", "barang", "travel", "kepemilikan_kendaraan", "channeling"]),
   amount: z.number().positive(),
   tenorMonths: z.number().int().min(1).max(60),
   purpose: z.string().optional(),
@@ -23,6 +23,7 @@ const INTEREST_RATES: Record<string, number> = {
   khusus: 10,
   barang: 8,
   travel: 10,
+  kepemilikan_kendaraan: 8,
   channeling: 0,
 };
 
@@ -148,7 +149,7 @@ export async function POST(request: NextRequest) {
         purpose: parsed.data.purpose,
         formData: parsed.data.formData || null,
         documentUrls: parsed.data.documentUrls || null,
-        status: isChanneling ? "on_review" : shouldHold ? "held" : "pending_treasury",
+        status: isChanneling ? "on_review" : shouldHold ? "held" : "pending_sekper",
         coaCode,
         queueNumber,
         queuePeriod,

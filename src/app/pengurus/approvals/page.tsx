@@ -661,7 +661,7 @@ export default function PengurusApprovalsPage() {
                     <Check className="w-4 h-4" />
                     Setujui
                   </button>
-                  {approval.referenceType === "loan" && userDbRole === "staf_treasury" && (
+                  {approval.referenceType === "loan" && (userDbRole === "staf_sekper" || userDbRole === "staf_treasury") && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

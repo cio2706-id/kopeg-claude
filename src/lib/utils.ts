@@ -48,6 +48,7 @@ export const LOAN_TYPE_LABELS: Record<string, string> = {
   khusus: "Pinjaman Khusus",
   barang: "Pinjaman Barang",
   travel: "Pinjaman Travel",
+  kepemilikan_kendaraan: "Pinjaman Kepemilikan Kendaraan",
   channeling: "Pinjaman Channeling",
 };
 
@@ -55,6 +56,7 @@ export const ROLE_LABELS: Record<string, string> = {
   member: "Anggota",
   staf_pengadaan: "Staf Pengadaan",
   staf_treasury: "Staf Treasury",
+  staf_sekper: "Staf Sekper",
   staf_piutang: "Staf Piutang",
   staf_akunting: "Staf Akunting",
   manager: "Manager",
@@ -65,6 +67,7 @@ export const ROLE_LABELS: Record<string, string> = {
 
 export const LOAN_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
+  pending_sekper: "Review Staf Sekper",
   pending_treasury: "Review Staf Treasury",
   analysis: "Analisa Kredit",
   pending_manager: "Review Manager",
@@ -110,16 +113,16 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
 
 // ─── Flow Definitions (per PDF) ─────────────────────────────────────────────
 
-// Pinjaman: Staf Treasury → Manager → Bendahara → Ketua
+// Pinjaman: Staf Sekper → Manager → Bendahara → Ketua
 export const LOAN_APPROVAL_STEPS = [
-  { role: "staf_treasury" as const, order: 1, label: "Review & Analisa Kredit" },
+  { role: "staf_sekper" as const, order: 1, label: "Review & Analisa Kredit" },
   { role: "manager" as const, order: 2, label: "Review & Evaluasi Keuangan" },
   { role: "bendahara" as const, order: 3, label: "Review & Evaluasi Keuangan" },
   { role: "ketua" as const, order: 4, label: "Persetujuan Akhir" },
 ];
 
 export const LOAN_STATUS_FLOW: Record<string, string> = {
-  pending_treasury: "pending_manager",
+  pending_sekper: "pending_manager",
   pending_manager: "pending_bendahara",
   pending_bendahara: "pending_ketua",
   pending_ketua: "approved",
