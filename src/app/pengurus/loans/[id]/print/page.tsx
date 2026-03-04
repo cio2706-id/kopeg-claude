@@ -194,11 +194,11 @@ export default function PengurusLoanPrintPage() {
           <div className="field-row"><span className="field-label">Penghasilan Bruto / Bulan</span><span className="field-value">: {fd.penghasilanBruto ? formatCurrency(Number(fd.penghasilanBruto)) : "-"}</span></div>
           <div className="field-row"><span className="field-label">Nama Bank</span><span className="field-value">: {String(fd.namaBank || "-")}</span></div>
           <div className="field-row"><span className="field-label">Nomor Rekening</span><span className="field-value">: {String(fd.nomorRekening || "-")}</span></div>
+          <div className="field-row"><span className="field-label">Atas Nama Rekening</span><span className="field-value">: {String(fd.atasNamaRekening || "-")}</span></div>
         </div>
         <div className="section">
           <h3 className="section-title">DATA KREDIT</h3>
           <div className="field-row"><span className="field-label">Jumlah Kredit Dimohon</span><span className="field-value">: {formatCurrency(loan.amount)}</span></div>
-          <div className="field-row"><span className="field-label">Jenis Agunan (&gt; Rp 50 Juta)</span><span className="field-value">: {String(fd.jenisAgunan || "-")}</span></div>
           <div className="field-row"><span className="field-label">Tujuan Penggunaan Kredit</span><span className="field-value">: {loan.purpose || "-"}</span></div>
           <div className="field-row"><span className="field-label">Jangka Waktu Kredit</span><span className="field-value">: {loan.tenorMonths} Bulan</span></div>
         </div>

@@ -237,7 +237,7 @@ export default function KartuPinjamanPage() {
               <p className="font-bold text-gray-900">{formatCurrency(loanAmount)}</p>
             </div>
             <div>
-              <p className="text-[11px] text-gray-400 uppercase tracking-wide">Suku Bunga</p>
+              <p className="text-[11px] text-gray-400 uppercase tracking-wide">Imbal Jasa</p>
               <p className="font-semibold text-gray-900">{loan.interestRate}% / tahun</p>
             </div>
             <div>
@@ -295,7 +295,7 @@ export default function KartuPinjamanPage() {
                   <th className="pb-2 pr-2 font-medium w-10">No</th>
                   <th className="pb-2 pr-2 font-medium">Bulan</th>
                   <th className="pb-2 pr-2 font-medium text-right">Angsuran Pokok</th>
-                  <th className="pb-2 pr-2 font-medium text-right">Bunga / Jasa</th>
+                  <th className="pb-2 pr-2 font-medium text-right">Imbal Jasa</th>
                   <th className="pb-2 pr-2 font-medium text-right">Angsuran / Bulan</th>
                   <th className="pb-2 font-medium text-right">Sisa Pokok</th>
                 </tr>
@@ -368,7 +368,7 @@ export default function KartuPinjamanPage() {
           <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400 print:text-[10px]">
             <p>* Kartu pinjaman ini dibuat secara otomatis oleh sistem Koperasi Pegawai BKI.</p>
             <p>* Biaya administrasi 1% dan simpanan khusus 1% dipotong dari pagu pinjaman saat pencairan.</p>
-            <p>* Jadwal angsuran menggunakan metode bunga flat.</p>
+            <p>* Jadwal angsuran menggunakan metode imbal jasa flat.</p>
           </div>
         </div>
       </div>

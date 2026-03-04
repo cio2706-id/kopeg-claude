@@ -312,7 +312,7 @@ export default function LoansPage() {
                       <div className="flex items-start gap-2">
                         <Percent className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
                         <div>
-                          <p className="text-[11px] text-gray-400">Suku Bunga</p>
+                          <p className="text-[11px] text-gray-400">Imbal Jasa</p>
                           <p className="text-sm font-semibold text-gray-900">{loan.interestRate}% / tahun</p>
                         </div>
                       </div>

@@ -79,9 +79,9 @@ const LOAN_TYPES: Record<LoanType, LoanTypeConfig> = {
 // ─── Reguler Criteria ────────────────────────────────────────────────────────
 
 const LOAN_CRITERIA = [
-  { value: "pendidikan", label: "Pendidikan", rate: "0.25%" },
-  { value: "perumahan", label: "Perumahan", rate: "0.25%" },
-  { value: "musibah", label: "Musibah", rate: "0.25%" },
+  { value: "pendidikan", label: "Pendidikan" },
+  { value: "perumahan", label: "Perumahan" },
+  { value: "musibah", label: "Musibah" },
 ];
 
 const MUSIBAH_TYPES = [
@@ -103,7 +103,7 @@ function getTenorOptions(type: LoanType): number[] {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function LoanApplicationPage() {
-  const [step, setStep] = useState<"select" | "form" | "success" | "channeling">("select");
+  const [step, setStep] = useState<"select" | "terms" | "form" | "success" | "channeling">("select");
   const [loanType, setLoanType] = useState<LoanType | "">("");
 
   // Common fields
@@ -117,6 +117,9 @@ export default function LoanApplicationPage() {
   const [musibahType, setMusibahType] = useState("");
   const [requestMonth, setRequestMonth] = useState("");
   const [previousBalance, setPreviousBalance] = useState("");
+  const [regulerNomorRekening, setRegulerNomorRekening] = useState("");
+  const [regulerNamaBank, setRegulerNamaBank] = useState("");
+  const [regulerAtasNama, setRegulerAtasNama] = useState("");
 
   // Khusus-specific
   const [tempatTanggalLahir, setTempatTanggalLahir] = useState("");
@@ -132,7 +135,7 @@ export default function LoanApplicationPage() {
   const [penghasilanBruto, setPenghasilanBruto] = useState("");
   const [namaBank, setNamaBank] = useState("");
   const [nomorRekening, setNomorRekening] = useState("");
-  const [jenisAgunan, setJenisAgunan] = useState("");
+  const [atasNamaRekening, setAtasNamaRekening] = useState("");
 
   // Barang-specific
   const [barangUnitKerja, setBarangUnitKerja] = useState("");
@@ -142,10 +145,20 @@ export default function LoanApplicationPage() {
   const [tipe, setTipe] = useState("");
   const [lainLain, setLainLain] = useState("");
   const [barangPreviousBalance, setBarangPreviousBalance] = useState("");
+  const [barangNomorRekening, setBarangNomorRekening] = useState("");
+  const [barangNamaBank, setBarangNamaBank] = useState("");
+  const [barangAtasNama, setBarangAtasNama] = useState("");
 
   // Channeling-specific
   const [channelingAmount, setChannelingAmount] = useState("");
   const [channelingPurpose, setChannelingPurpose] = useState("");
+  const [channelingDocumentFile, setChannelingDocumentFile] = useState<File | null>(null);
+  const [channelingNomorRekening, setChannelingNomorRekening] = useState("");
+  const [channelingNamaBank, setChannelingNamaBank] = useState("");
+  const [channelingAtasNama, setChannelingAtasNama] = useState("");
+
+  // Agreement (Syarat & Ketentuan)
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // State
   const [loading, setLoading] = useState(false);
@@ -198,11 +211,8 @@ export default function LoanApplicationPage() {
 
   function handleSelectType(type: LoanType) {
     setLoanType(type);
-    if (type === "channeling") {
-      setStep("channeling");
-    } else {
-      setStep("form");
-    }
+    setAgreedToTerms(false);
+    setStep("terms");
   }
 
   // ─── Build formData based on type ──────────────────────────────────────────
@@ -214,6 +224,9 @@ export default function LoanApplicationPage() {
         musibahType: loanCriteria === "musibah" ? musibahType : undefined,
         requestMonth,
         previousLoanBalance: previousBalance ? parseFloat(previousBalance) : 0,
+        nomorRekening: regulerNomorRekening,
+        namaBank: regulerNamaBank,
+        atasNamaRekening: regulerAtasNama,
       };
     }
     if (loanType === "khusus") {
@@ -231,7 +244,7 @@ export default function LoanApplicationPage() {
         penghasilanBruto: penghasilanBruto ? parseFloat(penghasilanBruto) : 0,
         namaBank,
         nomorRekening,
-        jenisAgunan,
+        atasNamaRekening,
       };
     }
     if (loanType === "barang") {
@@ -243,6 +256,9 @@ export default function LoanApplicationPage() {
         tipe,
         lainLain,
         previousLoanBalance: barangPreviousBalance ? parseFloat(barangPreviousBalance) : 0,
+        nomorRekening: barangNomorRekening,
+        namaBank: barangNamaBank,
+        atasNamaRekening: barangAtasNama,
       };
     }
     return {};
@@ -255,26 +271,31 @@ export default function LoanApplicationPage() {
     setLoading(true);
     setError(null);
 
+    if (!documentFile) {
+      setError("Dokumen Pendukung wajib diupload");
+      setLoading(false);
+      return;
+    }
+
     try {
       let documentUrls: string[] = [];
-      if (documentFile) {
-        const formData = new FormData();
-        formData.append("file", documentFile);
-        formData.append("type", "loan");
-        const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          documentUrls = [uploadData.url];
-        }
+      const formData = new FormData();
+      formData.append("file", documentFile);
+      formData.append("type", "loan");
+      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        documentUrls = [uploadData.url];
       }
 
       const config = LOAN_TYPES[loanType as LoanType];
+      const loanAmount = loanType === "barang" ? 1 : parseFloat(amount);
       const res = await fetch("/api/loans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           loanType,
-          amount: parseFloat(amount),
+          amount: loanAmount,
           tenorMonths: parseInt(tenor),
           purpose,
           interestRate: config.rate,
@@ -303,7 +324,23 @@ export default function LoanApplicationPage() {
     setLoading(true);
     setError(null);
 
+    if (!channelingDocumentFile) {
+      setError("Dokumen Pendukung wajib diupload");
+      setLoading(false);
+      return;
+    }
+
     try {
+      let documentUrls: string[] = [];
+      const formData = new FormData();
+      formData.append("file", channelingDocumentFile);
+      formData.append("type", "loan");
+      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        documentUrls = [uploadData.url];
+      }
+
       const res = await fetch("/api/loans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -313,9 +350,13 @@ export default function LoanApplicationPage() {
           tenorMonths: 1,
           purpose: channelingPurpose || "Pinjaman Channeling (Mandiri & BSI)",
           interestRate: 0,
+          documentUrls: documentUrls.length > 0 ? documentUrls : undefined,
           formData: {
             channelingAmount: channelingAmount ? parseFloat(channelingAmount) : undefined,
             channelingPurpose,
+            nomorRekening: channelingNomorRekening,
+            namaBank: channelingNamaBank,
+            atasNamaRekening: channelingAtasNama,
           },
         }),
       });
@@ -429,6 +470,125 @@ export default function LoanApplicationPage() {
     );
   }
 
+  // ─── Terms & Conditions ──────────────────────────────────────────────────
+
+  const TERMS_BY_TYPE: Record<LoanType, { title: string; items: string[] }> = {
+    reguler: {
+      title: "Syarat & Ketentuan Pinjaman Reguler",
+      items: [
+        "Plafon maks: Rp 25.000.000",
+        "Tenor maks: 10 bulan",
+        "Biaya administrasi: 1% dari pinjaman",
+        "Simpanan Khusus: 1% dari pinjaman",
+        "Dokumen: Fotokopi KTP, slip gaji terbaru, bukti alasan meminjam",
+        "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
+        "Pemohon menyetujui pemotongan gaji untuk angsuran dan mengotorisasi PT BKI untuk memproses.",
+        "Apabila keanggotaan atau kepegawaian berakhir, sisa pinjaman akan dipotong dari pesangon/pensiun.",
+        "Pemohon setuju mematuhi seluruh prosedur Koperasi; Koperasi dapat menyetujui/menolak tanpa penjelasan.",
+      ],
+    },
+    khusus: {
+      title: "Syarat & Ketentuan Pinjaman Khusus",
+      items: [
+        "Harus Pegawai Tetap PT BKI",
+        "Plafon maks: Rp 100.000.000",
+        "Tenor maks: 60 bulan (5 tahun)",
+        "Imbal Jasa: 7.5% per tahun (flat)",
+        "Asuransi wajib jika > Rp 25 juta",
+        "Angsuran min 40% dari gaji",
+        "Dokumen: KTP, KK, slip gaji, bukti alasan meminjam",
+        "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
+        "Pemohon menyetujui pemotongan gaji untuk angsuran dan mengotorisasi PT BKI untuk memproses.",
+        "Apabila keanggotaan atau kepegawaian berakhir, sisa pinjaman akan dipotong dari pesangon/pensiun.",
+        "Pemohon setuju mematuhi seluruh prosedur Koperasi; Koperasi dapat menyetujui/menolak tanpa penjelasan.",
+      ],
+    },
+    barang: {
+      title: "Syarat & Ketentuan Pinjaman Barang",
+      items: [
+        "Pinjaman untuk pembelian barang konsumsi.",
+        "Harga barang akan ditentukan oleh Pengurus.",
+        "Pemohon berjanji akan mematuhi ketentuan pinjaman yang ditetapkan Koperasi Pegawai BKI.",
+        "Apabila pemohon tidak lagi menjadi anggota / pegawai PT BKI, seluruh hutang akan dilunasi sekaligus.",
+        "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
+      ],
+    },
+    channeling: {
+      title: "Syarat & Ketentuan Pinjaman Channeling",
+      items: [
+        "Pinjaman channeling melalui Bank Mandiri & BSI.",
+        "Setelah menyimpan data, silakan hubungi Tim Koperasi Pegawai BKI untuk melanjutkan proses.",
+        "Seluruh informasi yang diberikan harus benar dan dapat diverifikasi oleh Koperasi.",
+        "Pemohon setuju mematuhi seluruh prosedur Koperasi; Koperasi dapat menyetujui/menolak tanpa penjelasan.",
+      ],
+    },
+  };
+
+  if (step === "terms" && loanType) {
+    const termsConfig = TERMS_BY_TYPE[loanType as LoanType];
+    const loanConfig = LOAN_TYPES[loanType as LoanType];
+    return (
+      <DashboardLayout variant="member" userName={userName} userEmail={userEmail} onLogout={handleLogout}>
+        <div className="max-w-2xl mx-auto">
+          <button
+            onClick={() => { setStep("select"); setLoanType(""); }}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4"
+          >
+            <ArrowLeft className="w-4 h-4" /> Kembali pilih jenis pinjaman
+          </button>
+
+          <div className="flex items-center gap-3 mb-6">
+            <div className={`w-11 h-11 rounded-xl ${loanConfig.colors.bg} flex items-center justify-center`}>
+              <span className={loanConfig.colors.icon}>{loanConfig.icon}</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">{termsConfig.title}</h1>
+              <p className="text-sm text-gray-500">Baca dan setujui sebelum melanjutkan</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-5 max-h-80 overflow-y-auto">
+              <ul className="list-disc list-inside space-y-2 text-sm text-gray-700">
+                {termsConfig.items.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 text-teal-500 focus:ring-teal-500 rounded"
+              />
+              <span className="text-sm text-gray-900">
+                Saya telah membaca dan menyetujui seluruh Syarat & Ketentuan di atas.
+              </span>
+            </label>
+
+            <button
+              type="button"
+              disabled={!agreedToTerms}
+              onClick={() => {
+                if (loanType === "channeling") {
+                  setStep("channeling");
+                } else {
+                  setStep("form");
+                }
+              }}
+              className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200"
+            >
+              <ArrowRight className="w-4 h-4" />
+              Lanjutkan Pengisian Formulir
+            </button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   // ─── Channeling Form ───────────────────────────────────────────────────────
 
   if (step === "channeling") {
@@ -474,6 +634,84 @@ export default function LoanApplicationPage() {
                   placeholder="Jelaskan tujuan pinjaman..."
                 />
               </div>
+            </div>
+
+            {/* ── Bank Account Info ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
+              <h2 className="font-semibold text-gray-900">Data Rekening</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nomor Rekening *</label>
+                  <input
+                    type="text"
+                    value={channelingNomorRekening}
+                    onChange={(e) => setChannelingNomorRekening(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nomor rekening"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nama Bank *</label>
+                  <input
+                    type="text"
+                    value={channelingNamaBank}
+                    onChange={(e) => setChannelingNamaBank(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nama bank"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Atas Nama Rekening *</label>
+                  <input
+                    type="text"
+                    value={channelingAtasNama}
+                    onChange={(e) => setChannelingAtasNama(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nama pemilik rekening"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Document Upload ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Wajib) *</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Upload dokumen pendukung seperti slip gaji, KTP, KK, atau dokumen lainnya (PDF, maks 5MB).
+              </p>
+              <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-all">
+                <Upload className="w-5 h-5 text-gray-400" />
+                <div className="flex-1">
+                  {channelingDocumentFile ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">{channelingDocumentFile.name}</span>
+                      <span className="text-xs text-gray-400">({(channelingDocumentFile.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setChannelingDocumentFile(null); }}
+                        className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && file.size <= 5 * 1024 * 1024) setChannelingDocumentFile(file);
+                    else if (file) alert("Ukuran file maks 5MB");
+                  }}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             <div className="bg-sky-50 border border-sky-200 rounded-2xl p-5">
@@ -548,9 +786,6 @@ export default function LoanApplicationPage() {
                   {config.label}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">{config.description}</p>
-                {config.rate > 0 && (
-                  <p className="text-xs text-gray-400 mt-1">Bunga {config.rate}% / tahun</p>
-                )}
                 <div className="mt-3 flex items-center gap-1 text-xs text-teal-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                   Pilih <ArrowRight className="w-3 h-3" />
                 </div>
@@ -591,22 +826,30 @@ export default function LoanApplicationPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
             <h2 className="font-semibold text-gray-900">Data Pinjaman</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Pinjaman (Rp) *</label>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  required
-                  min="100000"
-                  max={config.maxAmount || undefined}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
-                  placeholder={config.maxAmount ? `Maks ${formatCurrency(config.maxAmount)}` : "Masukkan jumlah"}
-                />
-                {config.maxAmount && (
-                  <p className="text-xs text-gray-400 mt-1">Maks: {formatCurrency(config.maxAmount)}</p>
-                )}
-              </div>
+              {loanType !== "barang" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Pinjaman (Rp) *</label>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    required
+                    min="100000"
+                    max={config.maxAmount || undefined}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                    placeholder={config.maxAmount ? `Maks ${formatCurrency(config.maxAmount)}` : "Masukkan jumlah"}
+                  />
+                  {config.maxAmount && (
+                    <p className="text-xs text-gray-400 mt-1">Maks: {formatCurrency(config.maxAmount)}</p>
+                  )}
+                </div>
+              )}
+              {loanType === "barang" && (
+                <div>
+                  <p className="block text-sm font-medium text-gray-700 mb-2">Harga Barang</p>
+                  <p className="text-sm text-gray-500 italic py-3">Akan ditentukan oleh Pengurus</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tenor (bulan) *</label>
                 <select
@@ -653,7 +896,6 @@ export default function LoanApplicationPage() {
                         className="text-teal-500 focus:ring-teal-500"
                       />
                       <span className="text-sm text-gray-900">{c.label}</span>
-                      <span className="text-xs text-gray-500 ml-auto">Bunga {c.rate}</span>
                     </label>
                   ))}
                 </div>
@@ -703,16 +945,42 @@ export default function LoanApplicationPage() {
                 </div>
               </div>
 
-              {/* Syarat & Ketentuan */}
-              <div className="rounded-xl bg-teal-50 border border-teal-200 p-4 text-sm text-teal-800">
-                <p className="font-medium mb-2">Syarat & Ketentuan Pinjaman Reguler:</p>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>Plafon maks: Rp 25.000.000</li>
-                  <li>Tenor maks: 10 bulan</li>
-                  <li>Biaya administrasi: 1% dari pinjaman</li>
-                  <li>Simpanan Khusus: 1% dari pinjaman</li>
-                  <li>Dokumen: Fotokopi KTP, slip gaji terbaru, bukti alasan meminjam</li>
-                </ul>
+              {/* ── Bank Account Info ── */}
+              <h2 className="font-semibold text-gray-900 pt-2">Data Rekening</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nomor Rekening *</label>
+                  <input
+                    type="text"
+                    value={regulerNomorRekening}
+                    onChange={(e) => setRegulerNomorRekening(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nomor rekening"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nama Bank *</label>
+                  <input
+                    type="text"
+                    value={regulerNamaBank}
+                    onChange={(e) => setRegulerNamaBank(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nama bank"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Atas Nama Rekening *</label>
+                  <input
+                    type="text"
+                    value={regulerAtasNama}
+                    onChange={(e) => setRegulerAtasNama(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nama pemilik rekening"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -871,31 +1139,17 @@ export default function LoanApplicationPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Agunan (&gt; Rp 50 Juta)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Atas Nama Rekening *</label>
                     <input
                       type="text"
-                      value={jenisAgunan}
-                      onChange={(e) => setJenisAgunan(e.target.value)}
+                      value={atasNamaRekening}
+                      onChange={(e) => setAtasNamaRekening(e.target.value)}
+                      required
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
-                      placeholder="BPKB / SHM / SHGB (opsional)"
+                      placeholder="Nama pemilik rekening"
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Syarat & Ketentuan */}
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-                <p className="font-medium mb-2">Syarat & Ketentuan Pinjaman Khusus:</p>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>Harus Pegawai Tetap PT BKI</li>
-                  <li>Plafon maks: Rp 100.000.000</li>
-                  <li>Tenor maks: 60 bulan (5 tahun)</li>
-                  <li>Bunga: 7.5% per tahun (flat)</li>
-                  <li>Asuransi wajib jika &gt; Rp 25 juta</li>
-                  <li>Agunan wajib jika &gt; Rp 50 juta (BPKB/SHM/SHGB)</li>
-                  <li>Angsuran min 40% dari gaji</li>
-                  <li>Dokumen: KTP, KK, slip gaji, bukti alasan meminjam</li>
-                </ul>
               </div>
 
               {/* Declarations */}
@@ -999,10 +1253,42 @@ export default function LoanApplicationPage() {
                 </div>
               </div>
 
-              {/* Declarations */}
-              <div className="text-xs text-gray-600 space-y-1 border-t border-gray-100 pt-4">
-                <p>1. Pemohon berjanji akan mematuhi ketentuan pinjaman yang ditetapkan Koperasi Pegawai BKI.</p>
-                <p>2. Apabila pemohon tidak lagi menjadi anggota / pegawai PT BKI, seluruh hutang akan dilunasi sekaligus.</p>
+              {/* ── Bank Account Info ── */}
+              <h2 className="font-semibold text-gray-900 pt-2">Data Rekening</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nomor Rekening *</label>
+                  <input
+                    type="text"
+                    value={barangNomorRekening}
+                    onChange={(e) => setBarangNomorRekening(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nomor rekening"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nama Bank *</label>
+                  <input
+                    type="text"
+                    value={barangNamaBank}
+                    onChange={(e) => setBarangNamaBank(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nama bank"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Atas Nama Rekening *</label>
+                  <input
+                    type="text"
+                    value={barangAtasNama}
+                    onChange={(e) => setBarangAtasNama(e.target.value)}
+                    required
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    placeholder="Nama pemilik rekening"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1022,7 +1308,7 @@ export default function LoanApplicationPage() {
                     <p className="font-bold text-lg">{formatCurrency(parseFloat(amount))}</p>
                   </div>
                   <div className="bg-white/10 rounded-xl p-4">
-                    <p className="text-xs text-teal-200 mb-1">Suku Bunga</p>
+                    <p className="text-xs text-teal-200 mb-1">Imbal Jasa</p>
                     <p className="font-bold text-lg">{interestRate}% / tahun</p>
                   </div>
                   <div className="bg-white/10 rounded-xl p-4">
@@ -1066,7 +1352,7 @@ export default function LoanApplicationPage() {
 
           {/* ── Document Upload ─────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Opsional)</h2>
+            <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Wajib) *</h2>
             <p className="text-xs text-gray-500 mb-3">
               Upload dokumen pendukung seperti slip gaji, KTP, KK, atau dokumen lainnya (PDF, maks 5MB).
             </p>
@@ -1119,7 +1405,7 @@ export default function LoanApplicationPage() {
 
           <button
             type="submit"
-            disabled={loading || !loanType || !amount || !tenor}
+            disabled={loading || !loanType || (!amount && loanType !== "barang") || !tenor || !documentFile}
             className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
           >
             {loading ? (

@@ -148,7 +148,7 @@ export interface InstallmentRow {
 /**
  * Generate flat-interest installment schedule (matching koperasi Excel format).
  * - Pokok per bulan = principal / tenorMonths
- * - Bunga per bulan = principal * (annualRate / 100 / 12) [flat]
+ * - Imbal Jasa per bulan = principal * (annualRate / 100 / 12) [flat]
  * - Sisa pokok decreases by pokok each month
  */
 export function generateInstallmentSchedule(

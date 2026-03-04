@@ -159,7 +159,7 @@ export default function HomePage() {
               </div>
               <h3 className="font-semibold text-gray-900 text-lg mb-2">Pinjaman</h3>
               <p className="text-sm text-gray-500 leading-relaxed mb-4">
-                Ajukan pinjaman dengan bunga kompetitif. Simulasi angsuran
+                Ajukan pinjaman dengan imbal jasa kompetitif. Simulasi angsuran
                 sebelum mengajukan untuk perencanaan yang lebih baik.
               </p>
               <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-600 group-hover:gap-2 transition-all">
