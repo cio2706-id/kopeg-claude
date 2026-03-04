@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
 
     // Detect header row and column mapping
     // Expected: NO.ANGGOTA, NAMA, UNIT KERJA, then savings columns
+    // Some Excel files use multi-row headers (e.g. Row 0 has merged cells, Row 1 has sub-columns)
     let headerRowIdx = -1;
     let colMap = { noAnggota: -1, nama: -1, wajib: -1, pokok: -1, khusus: -1, sukarela: -1, shu: -1, jumlah: -1 };
 
@@ -58,15 +59,33 @@ export async function POST(request: NextRequest) {
         headerRowIdx = i;
         colMap.noAnggota = noIdx;
         colMap.nama = namaIdx;
-        // Find savings columns after nama
-        for (let j = namaIdx + 1; j < row.length; j++) {
-          const colStr = String(row[j] || "").toLowerCase();
-          if (colStr.includes("wajib")) colMap.wajib = j;
-          else if (colStr.includes("pokok")) colMap.pokok = j;
-          else if (colStr.includes("khusus")) colMap.khusus = j;
-          else if (colStr.includes("sukarela")) colMap.sukarela = j;
-          else if (colStr.includes("shu")) colMap.shu = j;
-          else if (colStr.includes("jumlah") || colStr.includes("total") || colStr.includes("saldo")) colMap.jumlah = j;
+
+        // Scan this row AND subsequent rows for savings column names (handles multi-row headers)
+        const scanRows = [i];
+        // Check up to 3 rows below for sub-header columns
+        for (let sub = 1; sub <= 3; sub++) {
+          if (i + sub < data.length) scanRows.push(i + sub);
+        }
+
+        for (const ri of scanRows) {
+          const scanRow = data[ri];
+          if (!scanRow) continue;
+          let foundNewCols = false;
+          for (let j = namaIdx + 1; j < scanRow.length; j++) {
+            const colStr = String(scanRow[j] || "").toLowerCase().trim();
+            if (!colStr) continue;
+            // Match specific savings columns - use exact-ish matching to avoid false positives
+            if (colStr.includes("wajib") && colMap.wajib === -1) { colMap.wajib = j; foundNewCols = true; }
+            else if (colStr.includes("pokok") && colMap.pokok === -1) { colMap.pokok = j; foundNewCols = true; }
+            else if (colStr.includes("khusus") && !colStr.includes("sukarela") && colMap.khusus === -1) { colMap.khusus = j; foundNewCols = true; }
+            else if (colStr.includes("sukarela") && !colStr.includes("berjangka") && colMap.sukarela === -1) { colMap.sukarela = j; foundNewCols = true; }
+            else if (colStr.includes("shu") && colMap.shu === -1) { colMap.shu = j; foundNewCols = true; }
+            else if ((colStr === "jumlah" || colStr === "total" || colStr === "saldo") && colMap.jumlah === -1) { colMap.jumlah = j; foundNewCols = true; }
+          }
+          // If we found savings columns in a sub-header row, update headerRowIdx to that row
+          if (foundNewCols && ri > headerRowIdx) {
+            headerRowIdx = ri;
+          }
         }
         break;
       }

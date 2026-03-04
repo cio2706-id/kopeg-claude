@@ -16,7 +16,9 @@ interface Saving {
   period: string;
   simpananPokok: string;
   simpananWajib: string;
+  simpananKhusus: string;
   simpananSukarela: string;
+  shu: string;
   totalBalance: string;
 }
 
@@ -76,8 +78,14 @@ export default function SavingsPage() {
   const simpananWajib = latestSaving
     ? parseFloat(latestSaving.simpananWajib)
     : 0;
+  const simpananKhusus = latestSaving
+    ? parseFloat(latestSaving.simpananKhusus || "0")
+    : 0;
   const simpananSukarela = latestSaving
     ? parseFloat(latestSaving.simpananSukarela)
+    : 0;
+  const shu = latestSaving
+    ? parseFloat(latestSaving.shu || "0")
     : 0;
   const totalBalance = latestSaving
     ? parseFloat(latestSaving.totalBalance)
@@ -100,22 +108,34 @@ export default function SavingsPage() {
 
   const summaryCards = [
     {
-      label: "Simpanan Pokok",
-      value: simpananPokok,
-      bg: "bg-blue-100",
-      iconBg: "text-blue-600",
-    },
-    {
       label: "Simpanan Wajib",
       value: simpananWajib,
       bg: "bg-teal-100",
       iconBg: "text-teal-600",
     },
     {
+      label: "Simpanan Pokok",
+      value: simpananPokok,
+      bg: "bg-blue-100",
+      iconBg: "text-blue-600",
+    },
+    {
+      label: "Simpanan Khusus",
+      value: simpananKhusus,
+      bg: "bg-indigo-100",
+      iconBg: "text-indigo-600",
+    },
+    {
       label: "Simpanan Sukarela",
       value: simpananSukarela,
       bg: "bg-amber-100",
       iconBg: "text-amber-600",
+    },
+    {
+      label: "SHU",
+      value: shu,
+      bg: "bg-emerald-100",
+      iconBg: "text-emerald-600",
     },
   ];
 
@@ -134,7 +154,7 @@ export default function SavingsPage() {
           <Wallet className="w-5 h-5 text-teal-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Simpanan Saya</h1>
+          <h1 className="text-lg font-bold text-gray-900">Simpanan Saya</h1>
           <p className="text-sm text-gray-500">
             Ringkasan dan riwayat simpanan Anda
           </p>
@@ -144,7 +164,7 @@ export default function SavingsPage() {
       {/* ============================================================ */}
       {/*  Summary cards                                                */}
       {/* ============================================================ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {summaryCards.map((card) => (
           <div
             key={card.label}
@@ -173,7 +193,7 @@ export default function SavingsPage() {
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
         <div className="relative">
           <p className="text-sm text-teal-200 mb-1">Total Saldo Simpanan</p>
-          <p className="text-3xl font-bold">{formatCurrency(totalBalance)}</p>
+          <p className="text-xl font-bold">{formatCurrency(totalBalance)}</p>
           <p className="text-xs text-teal-200 mt-2">
             Berdasarkan data periode terbaru
           </p>
@@ -201,9 +221,11 @@ export default function SavingsPage() {
               <thead>
                 <tr className="text-left text-gray-400 uppercase tracking-wide text-xs border-b border-gray-100">
                   <th className="pb-3 font-medium">Periode</th>
-                  <th className="pb-3 font-medium text-right">Pokok</th>
                   <th className="pb-3 font-medium text-right">Wajib</th>
+                  <th className="pb-3 font-medium text-right">Pokok</th>
+                  <th className="pb-3 font-medium text-right">Khusus</th>
                   <th className="pb-3 font-medium text-right">Sukarela</th>
+                  <th className="pb-3 font-medium text-right">SHU</th>
                   <th className="pb-3 font-medium text-right">Total</th>
                 </tr>
               </thead>
@@ -217,13 +239,19 @@ export default function SavingsPage() {
                       {s.period}
                     </td>
                     <td className="py-3 text-right text-gray-700">
-                      {formatCurrency(s.simpananPokok)}
-                    </td>
-                    <td className="py-3 text-right text-gray-700">
                       {formatCurrency(s.simpananWajib)}
                     </td>
                     <td className="py-3 text-right text-gray-700">
+                      {formatCurrency(s.simpananPokok)}
+                    </td>
+                    <td className="py-3 text-right text-gray-700">
+                      {formatCurrency(s.simpananKhusus || "0")}
+                    </td>
+                    <td className="py-3 text-right text-gray-700">
                       {formatCurrency(s.simpananSukarela)}
+                    </td>
+                    <td className="py-3 text-right text-gray-700">
+                      {formatCurrency(s.shu || "0")}
                     </td>
                     <td className="py-3 text-right font-semibold text-gray-900">
                       {formatCurrency(s.totalBalance)}

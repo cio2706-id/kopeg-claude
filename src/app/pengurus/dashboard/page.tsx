@@ -366,7 +366,7 @@ export default function PengurusDashboardPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-lg font-bold text-gray-900">
             Dashboard Pengurus
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -400,7 +400,7 @@ export default function PengurusDashboardPage() {
               Total Anggota
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{members.length}</p>
+          <p className="text-lg font-bold text-gray-900">{members.length}</p>
           <p className="text-xs text-gray-400 mt-1">
             {activeMembers.length} aktif
           </p>
@@ -416,7 +416,7 @@ export default function PengurusDashboardPage() {
               Pinjaman Pending
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-lg font-bold text-gray-900">
             {pendingLoans.length}
           </p>
           <p className="text-xs text-gray-400 mt-1">
@@ -434,7 +434,7 @@ export default function PengurusDashboardPage() {
               PO Pending
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-lg font-bold text-gray-900">
             {pendingPOs.length}
           </p>
           <p className="text-xs text-gray-400 mt-1">
@@ -442,7 +442,7 @@ export default function PengurusDashboardPage() {
           </p>
         </div>
 
-        {/* 4. Total Simpanan Anggota */}
+        {/* 4. Total Pinjaman */}
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
@@ -452,7 +452,7 @@ export default function PengurusDashboardPage() {
               Total Pinjaman
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-sm font-bold text-gray-900 break-all leading-tight">
             {formatCurrency(totalLoanAmount)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
@@ -470,7 +470,7 @@ export default function PengurusDashboardPage() {
               Pencairan Bulan Ini
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-sm font-bold text-gray-900 break-all leading-tight">
             {formatCurrency(totalDisbursedThisMonth)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
@@ -486,7 +486,7 @@ export default function PengurusDashboardPage() {
             <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-500" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-sm font-semibold text-gray-900">
               Menunggu Persetujuan
             </h2>
             <span className="bg-red-500 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full">
@@ -762,7 +762,7 @@ export default function PengurusDashboardPage() {
           {/* Total & Active */}
           <div className="grid grid-cols-2 gap-3 mb-5">
             <div className="bg-teal-50 rounded-xl p-3.5 text-center">
-              <p className="text-2xl font-bold text-teal-700">
+              <p className="text-lg font-bold text-teal-700">
                 {activeMembers.length}
               </p>
               <p className="text-[11px] text-teal-600 font-medium mt-0.5">
@@ -770,7 +770,7 @@ export default function PengurusDashboardPage() {
               </p>
             </div>
             <div className="bg-gray-50 rounded-xl p-3.5 text-center">
-              <p className="text-2xl font-bold text-gray-700">
+              <p className="text-lg font-bold text-gray-700">
                 {members.length - activeMembers.length}
               </p>
               <p className="text-[11px] text-gray-500 font-medium mt-0.5">

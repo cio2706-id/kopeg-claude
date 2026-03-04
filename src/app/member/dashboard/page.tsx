@@ -30,7 +30,9 @@ interface Saving {
   period: string;
   simpananPokok: string;
   simpananWajib: string;
+  simpananKhusus: string;
   simpananSukarela: string;
+  shu: string;
   totalBalance: string;
 }
 
@@ -333,7 +335,7 @@ export default function MemberDashboardPage() {
     >
       {/* Page heading */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-lg font-bold text-gray-900">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">
           Selamat datang kembali, {userName}
         </p>
@@ -383,7 +385,7 @@ export default function MemberDashboardPage() {
 
             <div className="relative z-10 flex flex-col justify-between h-full">
               <div>
-                <h2 className="text-lg font-bold tracking-wide">Kopeg BKI</h2>
+                <h2 className="text-sm font-bold tracking-wide">Kopeg BKI</h2>
                 <p className="text-xs text-blue-200 mt-0.5 uppercase tracking-widest">
                   Anggota Koperasi
                 </p>
@@ -391,13 +393,13 @@ export default function MemberDashboardPage() {
 
               <div className="mt-6">
                 <p className="text-sm text-blue-200">Nama Anggota</p>
-                <p className="text-xl font-bold mt-0.5">{userName}</p>
+                <p className="text-base font-bold mt-0.5">{userName}</p>
               </div>
 
               <div className="mt-5 flex items-end justify-between">
                 <div>
                   <p className="text-xs text-blue-200">Saldo Simpanan</p>
-                  <p className="text-2xl font-bold mt-0.5">
+                  <p className="text-lg font-bold mt-0.5">
                     {formatCurrency(totalSavings)}
                   </p>
                 </div>
