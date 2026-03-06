@@ -115,12 +115,85 @@ export async function POST(request: NextRequest) {
       defval: null,
     });
 
+    // Delete existing deductions for same period + sourceType to allow re-upload
+    const existingDeductions = await db
+      .select()
+      .from(monthlyDeductions)
+      .where(
+        and(
+          eq(monthlyDeductions.period, period),
+          eq(monthlyDeductions.sourceFile, sourceType)
+        )
+      );
+
+    if (existingDeductions.length > 0) {
+      // Reverse the savings/loan balance changes from previous upload
+      for (const ded of existingDeductions) {
+        const simpananAmt = parseFloat(ded.simpananAmount || "0");
+        const pinjamanAmt = parseFloat(ded.pinjamanAmount || "0");
+
+        // Reverse savings increase
+        if (simpananAmt > 0) {
+          const [existingSaving] = await db
+            .select()
+            .from(savings)
+            .where(eq(savings.userId, ded.userId))
+            .orderBy(sql`${savings.period} DESC`)
+            .limit(1);
+
+          if (existingSaving) {
+            const revertedTotal = Math.max(0, parseFloat(existingSaving.totalBalance || "0") - simpananAmt);
+            const revertedWajib = Math.max(0, parseFloat(existingSaving.simpananWajib || "0") - simpananAmt);
+            await db.update(savings).set({
+              simpananWajib: revertedWajib.toString(),
+              totalBalance: revertedTotal.toString(),
+              updatedAt: new Date(),
+            }).where(eq(savings.id, existingSaving.id));
+          }
+        }
+
+        // Reverse loan balance deduction (add back the pinjaman amount)
+        if (pinjamanAmt > 0) {
+          const activeLoanBals = await db
+            .select()
+            .from(loanBalances)
+            .where(eq(loanBalances.userId, ded.userId));
+
+          const totalLoanSaldo = activeLoanBals.reduce(
+            (sum, lb) => sum + parseFloat(lb.saldo || "0"), 0
+          );
+          const totalWithPinjaman = totalLoanSaldo + pinjamanAmt;
+
+          if (totalWithPinjaman > 0) {
+            for (const lb of activeLoanBals) {
+              const lbSaldo = parseFloat(lb.saldo || "0");
+              const proportion = lbSaldo / totalLoanSaldo || (1 / activeLoanBals.length);
+              const addBack = pinjamanAmt * proportion;
+              await db.update(loanBalances).set({
+                saldo: (lbSaldo + addBack).toString(),
+                updatedAt: new Date(),
+              }).where(eq(loanBalances.id, lb.id));
+            }
+          }
+        }
+      }
+
+      // Delete old deduction records
+      await db.delete(monthlyDeductions).where(
+        and(
+          eq(monthlyDeductions.period, period),
+          eq(monthlyDeductions.sourceFile, sourceType)
+        )
+      );
+    }
+
     const batchId = `potongan_${sourceType}_${period}_${Date.now()}`;
     let processed = 0;
     let skipped = 0;
     let totalSimpanan = 0;
     let totalPinjaman = 0;
     const errors: string[] = [];
+    const isReupload = existingDeductions.length > 0;
 
     const parseNum = (v: string | number | null | undefined) => {
       if (v === null || v === undefined || v === "" || v === "-") return 0;
@@ -237,11 +310,14 @@ export async function POST(request: NextRequest) {
       sheet: usedSheetName,
       errors: errors.slice(0, 20),
       batchId,
+      reupload: isReupload,
+      previousRecords: isReupload ? existingDeductions.length : 0,
     });
   } catch (error) {
     console.error("Failed to upload potongan:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Internal server error", details: error instanceof Error ? error.message : "" },
+      { error: `Gagal memproses file: ${message}` },
       { status: 500 }
     );
   }
