@@ -14,6 +14,8 @@ export async function GET() {
     }
     const dbUser = await getOrCreateUser(authUser);
 
+    console.log("[member-balances] userId:", dbUser.id, "email:", authUser.email, "fullName:", dbUser.fullName);
+
     // Get latest savings record
     const [latestSavings] = await db
       .select()
@@ -28,21 +30,20 @@ export async function GET() {
       .from(loanBalances)
       .where(eq(loanBalances.userId, dbUser.id));
 
-    // Also get active loans from the loans table to ensure all loans are reflected
-    // Include approved + in-process + disbursed statuses (not just disbursed/selesai)
+    // Also get disbursed loans from the loans table (only dicairkan)
+    // Pinjaman in process (not yet disbursed) should NOT count toward saldo
     const disbursedLoans = await db
       .select({
         loanType: loans.loanType,
         amount: loans.amount,
         tenorMonths: loans.tenorMonths,
         monthlyInstallment: loans.monthlyInstallment,
-        status: loans.status,
       })
       .from(loans)
       .where(
         and(
           eq(loans.userId, dbUser.id),
-          inArray(loans.status, ["approved", "spp_process", "bank_process", "disbursed", "selesai"])
+          inArray(loans.status, ["disbursed", "selesai"])
         )
       );
 
@@ -62,6 +63,16 @@ export async function GET() {
       ? parseFloat(deductionRows[0].totalPinjaman || "0")
       : 0;
     const deductionPeriod = deductionRows.length > 0 ? deductionRows[0].period : null;
+
+    // Debug: count total loanBalances records in the whole DB
+    const [totalLoanBalCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(loanBalances);
+
+    console.log("[member-balances] userId:", dbUser.id, "loanBals for user:", loanBals.length, "total loanBals in DB:", totalLoanBalCount?.count, "disbursedLoans:", disbursedLoans.length);
+    if (loanBals.length > 0) {
+      console.log("[member-balances] loanBals details:", loanBals.map(lb => ({ type: lb.loanType, saldo: lb.saldo, period: lb.period })));
+    }
 
     // Group by loan type from loanBalances
     const pinjamanByType: Record<string, number> = {};
@@ -133,6 +144,15 @@ export async function GET() {
       }));
 
     return NextResponse.json({
+      _debug: {
+        userId: dbUser.id,
+        userEmail: authUser.email,
+        userFullName: dbUser.fullName,
+        loanBalancesForUser: loanBals.length,
+        totalLoanBalancesInDB: totalLoanBalCount?.count || 0,
+        disbursedLoansCount: disbursedLoans.length,
+        deductionRows: deductionRows.length,
+      },
       simpanan: latestSavings ? {
         period: latestSavings.period,
         wajib: latestSavings.simpananWajib,
