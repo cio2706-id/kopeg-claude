@@ -88,6 +88,12 @@ export const loanTypeEnum = pgEnum("loan_type", [
   "channeling",
 ]);
 
+export const interestMethodEnum = pgEnum("interest_method", [
+  "flat",
+  "efektif",
+  "sliding",
+]);
+
 export const sppStatusEnum = pgEnum("spp_status", [
   "draft",
   "pending_manager",
@@ -161,6 +167,7 @@ export const loans = pgTable("loans", {
   loanType: loanTypeEnum("loan_type").notNull(),
   amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
   interestRate: numeric("interest_rate", { precision: 5, scale: 2 }).notNull(),
+  interestMethod: interestMethodEnum("interest_method").default("flat").notNull(),
   tenorMonths: integer("tenor_months").notNull(),
   monthlyInstallment: numeric("monthly_installment", { precision: 15, scale: 2 }).notNull(),
   purpose: text("purpose"),

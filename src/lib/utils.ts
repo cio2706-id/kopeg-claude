@@ -26,15 +26,36 @@ export function generatePoNumber(): string {
   return `PO-${year}${month}-${random}`;
 }
 
+export type InterestMethod = "flat" | "efektif" | "sliding";
+
 export function calculateMonthlyInstallment(
   principal: number,
   annualRate: number,
-  tenorMonths: number
+  tenorMonths: number,
+  method: InterestMethod = "flat"
 ): number {
-  const monthlyRate = annualRate / 100 / 12;
-  if (monthlyRate === 0) return principal / tenorMonths;
-  const factor = Math.pow(1 + monthlyRate, tenorMonths);
-  return (principal * monthlyRate * factor) / (factor - 1);
+  if (annualRate === 0) return principal / tenorMonths;
+
+  switch (method) {
+    case "flat": {
+      const monthlyPrincipal = principal / tenorMonths;
+      const monthlyInterest = principal * (annualRate / 100 / 12);
+      return monthlyPrincipal + monthlyInterest;
+    }
+    case "efektif": {
+      const monthlyRate = annualRate / 100 / 12;
+      const factor = Math.pow(1 + monthlyRate, tenorMonths);
+      return (principal * monthlyRate * factor) / (factor - 1);
+    }
+    case "sliding": {
+      // First month installment (highest); decreases each month
+      const monthlyPrincipal = principal / tenorMonths;
+      const firstMonthInterest = principal * (annualRate / 100 / 12);
+      return monthlyPrincipal + firstMonthInterest;
+    }
+    default:
+      return principal / tenorMonths;
+  }
 }
 
 export function cn(...classes: (string | undefined | false | null)[]): string {
@@ -149,38 +170,85 @@ export interface InstallmentRow {
 }
 
 /**
- * Generate flat-interest installment schedule (matching koperasi Excel format).
- * - Pokok per bulan = principal / tenorMonths
- * - Imbal Jasa per bulan = principal * (annualRate / 100 / 12) [flat]
- * - Sisa pokok decreases by pokok each month
+ * Generate installment schedule supporting 3 interest methods:
+ * - FLAT (TETAP): fixed principal + fixed interest each month
+ * - EFEKTIF: fixed total payment, decreasing interest, increasing principal
+ * - SLIDING (MENURUN): fixed principal, decreasing interest based on remaining balance
  */
 export function generateInstallmentSchedule(
   principal: number,
   annualRate: number,
   tenorMonths: number,
-  disbursementDate: Date
+  disbursementDate: Date,
+  method: InterestMethod = "flat"
 ): InstallmentRow[] {
-  const monthlyPrincipal = principal / tenorMonths;
-  const monthlyInterest = principal * (annualRate / 100 / 12);
   const rows: InstallmentRow[] = [];
   let remaining = principal;
+  const monthlyRate = annualRate / 100 / 12;
 
-  for (let i = 1; i <= tenorMonths; i++) {
-    remaining = remaining - monthlyPrincipal;
-    if (remaining < 0.01) remaining = 0; // avoid floating point dust
-
-    const dueDate = new Date(disbursementDate);
-    dueDate.setMonth(dueDate.getMonth() + i);
-
-    rows.push({
-      installmentNumber: i,
-      dueDate,
-      principalAmount: Math.round(monthlyPrincipal),
-      interestAmount: Math.round(monthlyInterest),
-      totalAmount: Math.round(monthlyPrincipal + monthlyInterest),
-      remainingBalance: Math.round(remaining),
-      description: `Angsuran Ke-${i}`,
-    });
+  switch (method) {
+    case "flat": {
+      const monthlyPrincipal = principal / tenorMonths;
+      const monthlyInterest = principal * monthlyRate;
+      for (let i = 1; i <= tenorMonths; i++) {
+        remaining -= monthlyPrincipal;
+        if (remaining < 0.01) remaining = 0;
+        const dueDate = new Date(disbursementDate);
+        dueDate.setMonth(dueDate.getMonth() + i);
+        rows.push({
+          installmentNumber: i,
+          dueDate,
+          principalAmount: Math.round(monthlyPrincipal),
+          interestAmount: Math.round(monthlyInterest),
+          totalAmount: Math.round(monthlyPrincipal + monthlyInterest),
+          remainingBalance: Math.round(remaining),
+          description: `Angsuran Ke-${i}`,
+        });
+      }
+      break;
+    }
+    case "efektif": {
+      const factor = Math.pow(1 + monthlyRate, tenorMonths);
+      const fixedPayment = (principal * monthlyRate * factor) / (factor - 1);
+      for (let i = 1; i <= tenorMonths; i++) {
+        const interest = remaining * monthlyRate;
+        const principalPortion = fixedPayment - interest;
+        remaining -= principalPortion;
+        if (remaining < 0.01) remaining = 0;
+        const dueDate = new Date(disbursementDate);
+        dueDate.setMonth(dueDate.getMonth() + i);
+        rows.push({
+          installmentNumber: i,
+          dueDate,
+          principalAmount: Math.round(principalPortion),
+          interestAmount: Math.round(interest),
+          totalAmount: Math.round(fixedPayment),
+          remainingBalance: Math.round(remaining),
+          description: `Angsuran Ke-${i}`,
+        });
+      }
+      break;
+    }
+    case "sliding": {
+      const monthlyPrincipal = principal / tenorMonths;
+      for (let i = 1; i <= tenorMonths; i++) {
+        const interest = remaining * monthlyRate;
+        remaining -= monthlyPrincipal;
+        if (remaining < 0.01) remaining = 0;
+        const dueDate = new Date(disbursementDate);
+        dueDate.setMonth(dueDate.getMonth() + i);
+        rows.push({
+          installmentNumber: i,
+          dueDate,
+          principalAmount: Math.round(monthlyPrincipal),
+          interestAmount: Math.round(interest),
+          totalAmount: Math.round(monthlyPrincipal + interest),
+          remainingBalance: Math.round(remaining),
+          description: `Angsuran Ke-${i}`,
+        });
+      }
+      break;
+    }
   }
 
   return rows;

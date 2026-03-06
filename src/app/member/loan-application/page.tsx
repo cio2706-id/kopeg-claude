@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
-import { formatCurrency, calculateMonthlyInstallment } from "@/lib/utils";
+import { formatCurrency, calculateMonthlyInstallment, InterestMethod } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -129,6 +129,7 @@ export default function LoanApplicationPage() {
   const [amount, setAmount] = useState("");
   const [tenor, setTenor] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [interestMethod, setInterestMethod] = useState<InterestMethod>("flat");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
 
   // Reguler-specific
@@ -333,7 +334,8 @@ export default function LoanApplicationPage() {
       const newInstallment = calculateMonthlyInstallment(
         parseFloat(amount),
         LOAN_TYPES[loanType as LoanType]?.rate || 0,
-        parseInt(tenor)
+        parseInt(tenor),
+        interestMethod
       );
       const totalCicilan = existingMonthlyInstallment + newInstallment;
       const maxCicilan = income * 0.4;
@@ -373,6 +375,7 @@ export default function LoanApplicationPage() {
           tenorMonths: parseInt(tenor),
           purpose,
           interestRate: config.rate,
+          interestMethod,
           formData: buildFormData(),
           documentUrls: documentUrls.length > 0 ? documentUrls : undefined,
         }),
@@ -457,7 +460,7 @@ export default function LoanApplicationPage() {
   const isItemLoan = loanType === "barang" || loanType === "travel" || loanType === "kepemilikan_kendaraan";
   const monthlyInstallment =
     amount && tenor && loanType && loanType !== "channeling"
-      ? calculateMonthlyInstallment(parseFloat(amount), interestRate, parseInt(tenor))
+      ? calculateMonthlyInstallment(parseFloat(amount), interestRate, parseInt(tenor), interestMethod)
       : 0;
   const totalRepayment = monthlyInstallment * (parseInt(tenor) || 0);
 
@@ -969,6 +972,39 @@ export default function LoanApplicationPage() {
               </div>
             </div>
 
+            {/* ── Metode Bunga ── */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Metode Perhitungan Bunga</label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: "flat" as const, label: "Tetap (Flat)", desc: "Angsuran tetap setiap bulan" },
+                  { value: "efektif" as const, label: "Efektif", desc: "Bunga dihitung dari sisa pokok" },
+                  { value: "sliding" as const, label: "Menurun (Sliding)", desc: "Angsuran menurun tiap bulan" },
+                ]).map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setInterestMethod(m.value)}
+                    className={`rounded-xl border-2 p-3 text-left transition-all ${
+                      interestMethod === m.value
+                        ? "border-teal-500 bg-teal-50 ring-1 ring-teal-500"
+                        : "border-gray-200 bg-[#f0f0f0] hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full border-2 ${
+                        interestMethod === m.value ? "border-teal-500 bg-teal-500" : "border-gray-300"
+                      }`} />
+                      <span className={`text-sm font-medium ${interestMethod === m.value ? "text-teal-700" : "text-gray-700"}`}>
+                        {m.label}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1 ml-5">{m.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* ── Penghasilan Bruto (required for all non-channeling types) ── */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Penghasilan Bruto / Bulan (Rp) *</label>
@@ -1459,6 +1495,9 @@ export default function LoanApplicationPage() {
                   <div className="bg-white/10 rounded-xl p-4">
                     <p className="text-xs text-teal-200 mb-1">Imbal Jasa</p>
                     <p className="font-bold text-lg">{interestRate}% / tahun</p>
+                    <p className="text-[11px] text-teal-300 mt-0.5">
+                      {interestMethod === "flat" ? "Tetap (Flat)" : interestMethod === "efektif" ? "Efektif" : "Menurun (Sliding)"}
+                    </p>
                   </div>
                   <div className="bg-white/10 rounded-xl p-4">
                     <p className="text-xs text-teal-200 mb-1">Angsuran / Bulan</p>

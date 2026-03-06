@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { loans, approvals, loanQuotas } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS } from "@/lib/utils";
+import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS, InterestMethod } from "@/lib/utils";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { LOAN_COA_MAP } from "@/lib/accurate";
@@ -14,6 +14,7 @@ const loanSchema = z.object({
   tenorMonths: z.number().int().min(1).max(60),
   purpose: z.string().optional(),
   interestRate: z.number().min(0).max(100).optional(),
+  interestMethod: z.enum(["flat", "efektif", "sliding"]).optional(),
   documentUrls: z.array(z.string()).optional(),
   formData: z.record(z.string(), z.unknown()).optional(),
 });
@@ -54,12 +55,14 @@ export async function POST(request: NextRequest) {
 
     const interestRate =
       parsed.data.interestRate ?? INTEREST_RATES[parsed.data.loanType];
+    const interestMethod: InterestMethod = parsed.data.interestMethod || "flat";
     const monthlyInstallment = isChanneling
       ? 0
       : calculateMonthlyInstallment(
           parsed.data.amount,
           interestRate,
-          parsed.data.tenorMonths
+          parsed.data.tenorMonths,
+          interestMethod
         );
 
     const trackingNumber = generateTrackingNumber("LN");
@@ -144,6 +147,7 @@ export async function POST(request: NextRequest) {
         loanType: parsed.data.loanType,
         amount: parsed.data.amount.toString(),
         interestRate: interestRate.toString(),
+        interestMethod,
         tenorMonths: parsed.data.tenorMonths,
         monthlyInstallment: Math.round(monthlyInstallment).toString(),
         purpose: parsed.data.purpose,

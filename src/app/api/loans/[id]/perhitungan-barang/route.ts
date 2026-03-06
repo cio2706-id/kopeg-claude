@@ -91,7 +91,8 @@ export async function PATCH(
       calculateMonthlyInstallment(
         parsed.data.amount,
         parsed.data.interestRate,
-        parsed.data.tenorMonths
+        parsed.data.tenorMonths,
+        (loan.interestMethod as "flat" | "efektif" | "sliding") || "flat"
       )
     );
 

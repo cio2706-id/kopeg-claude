@@ -15,6 +15,7 @@ import {
   formatCurrency,
   LOAN_TYPE_LABELS,
   generateInstallmentSchedule,
+  InterestMethod,
 } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -27,6 +28,7 @@ interface LoanDetail {
   loanType: string;
   amount: string;
   interestRate: string;
+  interestMethod: InterestMethod;
   tenorMonths: number;
   monthlyInstallment: string;
   status: string;
@@ -103,7 +105,8 @@ export default function KartuPinjamanPage() {
           parseFloat(data.loan.amount),
           parseFloat(data.loan.interestRate),
           data.loan.tenorMonths,
-          data.loan.disbursedAt ? new Date(data.loan.disbursedAt) : new Date(data.loan.createdAt)
+          data.loan.disbursedAt ? new Date(data.loan.disbursedAt) : new Date(data.loan.createdAt),
+          data.loan.interestMethod || "flat"
         );
         setInstallments(
           schedule.map((row, idx) => ({
@@ -241,6 +244,12 @@ export default function KartuPinjamanPage() {
               <p className="font-semibold text-gray-900">{loan.interestRate}% / tahun</p>
             </div>
             <div>
+              <p className="text-[11px] text-gray-400 uppercase tracking-wide">Metode Bunga</p>
+              <p className="font-semibold text-gray-900">
+                {loan.interestMethod === "flat" ? "Tetap (Flat)" : loan.interestMethod === "efektif" ? "Efektif" : "Menurun (Sliding)"}
+              </p>
+            </div>
+            <div>
               <p className="text-[11px] text-gray-400 uppercase tracking-wide">Jangka Waktu</p>
               <p className="font-semibold text-gray-900">{loan.tenorMonths} bulan</p>
             </div>
@@ -368,7 +377,7 @@ export default function KartuPinjamanPage() {
           <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400 print:text-[10px]">
             <p>* Kartu pinjaman ini dibuat secara otomatis oleh sistem Koperasi Pegawai BKI.</p>
             <p>* Biaya administrasi 1% dan simpanan khusus 1% dipotong dari pagu pinjaman saat pencairan.</p>
-            <p>* Jadwal angsuran menggunakan metode imbal jasa flat.</p>
+            <p>* Jadwal angsuran menggunakan metode imbal jasa {loan.interestMethod === "flat" ? "tetap (flat)" : loan.interestMethod === "efektif" ? "efektif" : "menurun (sliding)"}.</p>
           </div>
         </div>
       </div>
