@@ -114,17 +114,17 @@ export async function GET() {
       }
     }
 
-    // Merge: use the higher value between loanBalances and disbursed loans per type
-    // This handles both imported data and newly disbursed loans
+    // Merge: sum existing (loanBalances from Excel) + new disbursed loans per type
+    // Both existing and newly disbursed loans contribute to the total
     const allTypes = new Set([...Object.keys(pinjamanByType), ...Object.keys(disbursedByType)]);
     const mergedByType: Record<string, number> = {};
     let mergedTotal = 0;
     for (const type of allTypes) {
       const fromBalance = pinjamanByType[type] || 0;
       const fromLoans = disbursedByType[type] || 0;
-      const best = Math.max(fromBalance, fromLoans);
-      mergedByType[type] = best;
-      mergedTotal += best;
+      const combined = fromBalance + fromLoans;
+      mergedByType[type] = combined;
+      mergedTotal += combined;
     }
 
     // Priority: actualMonthlyDeduction (potongan) > loanBalanceInstallment (Excel angsuran) > estimatedInstallment (saldo/tenor)

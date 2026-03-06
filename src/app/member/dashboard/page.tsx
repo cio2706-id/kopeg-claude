@@ -366,7 +366,7 @@ export default function MemberDashboardPage() {
                   COA {card.sub}
                 </p>
               )}
-              <p className="text-sm font-bold text-gray-900 mt-0.5 break-all leading-tight">
+              <p className="text-sm font-bold text-gray-900 mt-0.5 leading-tight whitespace-nowrap">
                 {formatCurrency(card.value)}
               </p>
             </div>

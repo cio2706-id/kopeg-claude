@@ -332,7 +332,7 @@ export default function LoansPage() {
       )}
 
       {/* ============================================================ */}
-      {/*  Pinjaman Dicairkan (Active/Disbursed)                        */}
+      {/*  Pinjaman Dicairkan (Active/Disbursed) - Grouped by Type      */}
       {/* ============================================================ */}
       <div className="space-y-4 mb-8">
         <div className="flex items-center gap-2">
@@ -350,9 +350,29 @@ export default function LoansPage() {
             </p>
           </div>
         ) : (
-          [...disbursedLoans]
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .map((loan) => {
+          (() => {
+            // Group disbursed loans by type
+            const grouped: Record<string, Loan[]> = {};
+            for (const loan of disbursedLoans) {
+              if (!grouped[loan.loanType]) grouped[loan.loanType] = [];
+              grouped[loan.loanType].push(loan);
+            }
+            return Object.entries(grouped).map(([type, typeLoans]) => (
+              <div key={type} className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg ${LOAN_TYPE_BG[type] || "bg-gray-200"} flex items-center justify-center shrink-0`}>
+                    {LOAN_TYPE_ICONS[type] || <CreditCard className="w-4 h-4 text-gray-600" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">{LOAN_TYPE_LABELS[type] || type}</p>
+                    <p className="text-[11px] text-gray-400">
+                      {typeLoans.length} pinjaman &middot; Total {formatCurrency(typeLoans.reduce((s, l) => s + parseFloat(l.amount), 0))}
+                    </p>
+                  </div>
+                </div>
+                {[...typeLoans]
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((loan) => {
               const isExpanded = expandedId === loan.id;
               const adminFee = parseFloat(loan.amount) * 0.01;
               const simpananKhusus = parseFloat(loan.amount) * 0.01;
@@ -495,7 +515,10 @@ export default function LoansPage() {
                   )}
                 </div>
               );
-            })
+            })}
+              </div>
+            ));
+          })()
         )}
       </div>
 
@@ -518,9 +541,28 @@ export default function LoansPage() {
             </p>
           </div>
         ) : (
-          [...onProgressLoans]
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .map((loan) => {
+          (() => {
+            const grouped: Record<string, Loan[]> = {};
+            for (const loan of onProgressLoans) {
+              if (!grouped[loan.loanType]) grouped[loan.loanType] = [];
+              grouped[loan.loanType].push(loan);
+            }
+            return Object.entries(grouped).map(([type, typeLoans]) => (
+              <div key={type} className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-lg ${LOAN_TYPE_BG[type] || "bg-gray-200"} flex items-center justify-center shrink-0`}>
+                    {LOAN_TYPE_ICONS[type] || <CreditCard className="w-4 h-4 text-gray-600" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">{LOAN_TYPE_LABELS[type] || type}</p>
+                    <p className="text-[11px] text-gray-400">
+                      {typeLoans.length} pinjaman &middot; Total {formatCurrency(typeLoans.reduce((s, l) => s + parseFloat(l.amount), 0))}
+                    </p>
+                  </div>
+                </div>
+                {[...typeLoans]
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((loan) => {
               const isExpanded = expandedId === loan.id;
               const adminFee = parseFloat(loan.amount) * 0.01;
               const simpananKhusus = parseFloat(loan.amount) * 0.01;
@@ -648,71 +690,112 @@ export default function LoansPage() {
                   )}
                 </div>
               );
-            })
+            })}
+              </div>
+            ));
+          })()
         )}
       </div>
 
       {/* ============================================================ */}
       {/*  Pinjaman Existing (from imported Excel / loanBalances)       */}
+      {/*  Grouped by loan type                                         */}
       {/* ============================================================ */}
-      {existingBalances.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Database className="w-4 h-4 text-blue-600" />
-            <h2 className="font-semibold text-gray-900 text-sm">
-              Pinjaman Existing (Data Kertas Kerja)
-            </h2>
-            <span className="text-xs text-gray-400">({existingBalances.length})</span>
-          </div>
+      {existingBalances.length > 0 && (() => {
+        // Group existing balances by loan type
+        const groupedExisting: Record<string, LoanBalanceDetail[]> = {};
+        for (const bal of existingBalances) {
+          const key = bal.loanType;
+          if (!groupedExisting[key]) groupedExisting[key] = [];
+          groupedExisting[key].push(bal);
+        }
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {existingBalances.map((bal) => {
-              const saldo = parseFloat(bal.saldo || "0");
-              const installment = bal.monthlyInstallment ? parseFloat(bal.monthlyInstallment) : null;
-              const typeLabel = EXISTING_LOAN_TYPE_LABELS[bal.loanType] || bal.loanType;
-              const bg = LOAN_TYPE_BG[bal.loanType] || LOAN_TYPE_BG[bal.loanType.split("_")[0]] || "bg-gray-100";
-              const icon = LOAN_TYPE_ICONS[bal.loanType] || LOAN_TYPE_ICONS[bal.loanType.split("_")[0]] || <CreditCard className="w-4 h-4 text-gray-600" />;
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-blue-600" />
+              <h2 className="font-semibold text-gray-900 text-sm">
+                Pinjaman Existing (Data Kertas Kerja)
+              </h2>
+              <span className="text-xs text-gray-400">({existingBalances.length})</span>
+            </div>
+
+            {Object.entries(groupedExisting).map(([type, balances]) => {
+              const typeLabel = EXISTING_LOAN_TYPE_LABELS[type] || type;
+              const bg = LOAN_TYPE_BG[type] || LOAN_TYPE_BG[type.split("_")[0]] || "bg-gray-100";
+              const icon = LOAN_TYPE_ICONS[type] || LOAN_TYPE_ICONS[type.split("_")[0]] || <CreditCard className="w-4 h-4 text-gray-600" />;
+              const totalSaldo = balances.reduce((sum, b) => sum + parseFloat(b.saldo || "0"), 0);
 
               return (
-                <div key={bal.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 border-blue-400">
-                  <div className="px-5 py-4">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
-                        {icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{typeLabel}</p>
-                        <p className="text-[11px] text-gray-400">Periode: {bal.period}</p>
-                      </div>
+                <div key={type} className="space-y-3">
+                  {/* Type header */}
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
+                      {icon}
                     </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{typeLabel}</p>
+                      <p className="text-[11px] text-gray-400">
+                        {balances.length} pinjaman &middot; Total {formatCurrency(totalSaldo)}
+                      </p>
+                    </div>
+                  </div>
 
-                    <div className="space-y-2 mb-4">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Saldo Pinjaman</span>
-                        <span className="font-bold text-gray-900">{formatCurrency(saldo)}</span>
-                      </div>
-                      {installment && installment > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Angsuran/Bulan</span>
-                          <span className="font-semibold text-gray-700">{formatCurrency(installment)}</span>
+                  {/* Cards for this type */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {balances.map((bal) => {
+                      const saldo = parseFloat(bal.saldo || "0");
+                      const installment = bal.monthlyInstallment ? parseFloat(bal.monthlyInstallment) : null;
+
+                      return (
+                        <div key={bal.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 border-blue-400">
+                          <div className="px-5 py-4">
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] text-gray-400">Periode: {bal.period}</p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 mb-4">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-500">Saldo Pinjaman</span>
+                                <span className="font-bold text-gray-900">{formatCurrency(saldo)}</span>
+                              </div>
+                              {installment && installment > 0 && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Angsuran/Bulan</span>
+                                  <span className="font-semibold text-gray-700">{formatCurrency(installment)}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Link
+                                href={`/member/loans/existing/${bal.id}/kartu`}
+                                className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-blue-100 transition border border-blue-200 flex-1 justify-center"
+                              >
+                                <ClipboardList className="w-3.5 h-3.5" />
+                                Kartu Pinjaman
+                              </Link>
+                              <Link
+                                href={`/member/loans/existing/${bal.id}/kartu`}
+                                target="_blank"
+                                className="inline-flex items-center gap-1.5 bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-100 transition border border-gray-200"
+                              >
+                                <FileDown className="w-3.5 h-3.5" />
+                              </Link>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-
-                    <Link
-                      href={`/member/loans/existing/${bal.id}/kartu`}
-                      className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-blue-100 transition border border-blue-200 w-full justify-center"
-                    >
-                      <ClipboardList className="w-3.5 h-3.5" />
-                      Kartu Pinjaman
-                    </Link>
+                      );
+                    })}
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </DashboardLayout>
   );
 }
