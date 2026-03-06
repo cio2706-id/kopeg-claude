@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users, employeeData } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { randomUUID } from "crypto";
 
 export async function GET() {
   try {
@@ -37,14 +36,17 @@ export async function POST(request: NextRequest) {
 
     const { fullName, email, role, phone, employeeId, department, position, company } = parsed.data;
 
-    // Check if email already exists
-    const [existing] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
-    if (existing) {
+    // Check if email already exists (case-insensitive)
+    const existingRows = await db
+      .select()
+      .from(users)
+      .where(sql`LOWER(${users.email}) = ${email.toLowerCase()}`);
+    if (existingRows.length > 0) {
       return NextResponse.json({ error: "Email sudah terdaftar" }, { status: 409 });
     }
 
     // Create user with placeholder authId (will be linked on first login via getOrCreateUser)
-    const placeholderAuthId = `pending_${randomUUID()}`;
+    const placeholderAuthId = `pending_${crypto.randomUUID()}`;
 
     const [newUser] = await db
       .insert(users)
@@ -61,21 +63,37 @@ export async function POST(request: NextRequest) {
 
     // Create employee_data record if extra details provided
     if (position || company || employeeId) {
-      await db.insert(employeeData).values({
-        userId: newUser.id,
-        fullName,
-        employeeNumber: employeeId || null,
-        email: email.toLowerCase(),
-        department: department || null,
-        position: position || null,
-        rawData: company ? { perusahaan: company } : null,
-      });
+      try {
+        await db.insert(employeeData).values({
+          userId: newUser.id,
+          fullName,
+          employeeNumber: employeeId || null,
+          email: email.toLowerCase(),
+          department: department || null,
+          position: position || null,
+          rawData: company ? { perusahaan: company } : null,
+        });
+      } catch (empError) {
+        console.error("Failed to create employee_data (user was created):", empError);
+        // User was still created successfully, don't fail the whole request
+      }
     }
 
     return NextResponse.json({ user: newUser }, { status: 201 });
   } catch (error) {
     console.error("Failed to create user:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    // Check for common database errors
+    if (message.includes("duplicate key") || message.includes("unique constraint")) {
+      return NextResponse.json({ error: "Data sudah ada di database (duplikat)" }, { status: 409 });
+    }
+    if (message.includes("relation") && message.includes("does not exist")) {
+      return NextResponse.json({ error: "Tabel database belum dibuat. Hubungi administrator untuk menjalankan migrasi database." }, { status: 500 });
+    }
+    return NextResponse.json(
+      { error: `Gagal menambah anggota: ${message}` },
+      { status: 500 }
+    );
   }
 }
 
