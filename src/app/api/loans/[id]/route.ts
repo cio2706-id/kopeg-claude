@@ -132,6 +132,29 @@ export async function GET(
       .from(loanBalances)
       .where(eq(loanBalances.userId, loan.userId));
 
+    // 6b. Estimate monthly installments from uploaded saldo
+    // Based on kartu pinjaman Excel analysis:
+    // - Reguler: 10-month flat principal
+    // - Khusus: varies, estimate 24-month average
+    // - Barang: typically 10-month flat principal
+    // - Channeling: excluded (handled by bank)
+    const ESTIMATED_TENOR: Record<string, number> = {
+      reguler: 10,
+      khusus: 24,
+      barang: 10,
+    };
+    let estimatedSaldoInstallment = 0;
+    for (const lb of importedBalances) {
+      const saldo = parseFloat(lb.saldo || "0");
+      if (saldo > 0) {
+        const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
+        const tenor = ESTIMATED_TENOR[baseType];
+        if (tenor) {
+          estimatedSaldoInstallment += Math.ceil(saldo / tenor);
+        }
+      }
+    }
+
     // 7. Fetch installment schedule (kartu pinjaman)
     const installments = await db
       .select()
@@ -146,6 +169,7 @@ export async function GET(
       pendingRequests,
       approvalSteps,
       loanBalances: importedBalances,
+      estimatedSaldoInstallment,
       installments,
     });
   } catch (error) {

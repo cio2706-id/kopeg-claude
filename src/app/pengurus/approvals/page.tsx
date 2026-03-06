@@ -72,6 +72,7 @@ interface LoanDetail {
   pendingRequests: LoanData[];
   approvalSteps: ApprovalStep[];
   loanBalances?: { loanType: string; saldo: string }[];
+  estimatedSaldoInstallment?: number;
 }
 
 interface PoItemData {
@@ -466,9 +467,13 @@ export default function PengurusApprovalsPage() {
       );
     }
 
-    const { loan, requester, activeLoans, pendingRequests, approvalSteps, loanBalances: importedBalances } = detail;
+    const { loan, requester, activeLoans, pendingRequests, approvalSteps, loanBalances: importedBalances, estimatedSaldoInstallment } = detail;
     const activeLoansTotal = activeLoans.reduce(
       (sum, l) => sum + parseFloat(l.amount),
+      0
+    );
+    const activeLoansMonthlyTotal = activeLoans.reduce(
+      (sum, l) => sum + parseFloat(l.monthlyInstallment),
       0
     );
 
@@ -477,6 +482,16 @@ export default function PengurusApprovalsPage() {
       (sum, lb) => sum + parseFloat(lb.saldo || "0"),
       0
     );
+
+    // Total existing monthly installment (active app loans + estimated saldo loans)
+    const totalExistingInstallment = activeLoansMonthlyTotal + (estimatedSaldoInstallment || 0);
+    // Include the new loan request installment
+    const newLoanInstallment = parseFloat(loan.monthlyInstallment);
+    const totalCicilanWithNew = totalExistingInstallment + newLoanInstallment;
+    // Get penghasilan bruto from formData if available
+    const penghasilanBruto = loan.formData ? Number((loan.formData as Record<string, unknown>).penghasilanBruto || 0) : 0;
+    const maxAllowedCicilan = penghasilanBruto * 0.4;
+    const cicilanExceeds40 = penghasilanBruto > 0 && totalCicilanWithNew > maxAllowedCicilan;
 
     const canAct = userDbRole === approval.approverRole;
     const isRejecting = rejectingId === approval.id;
@@ -637,6 +652,57 @@ export default function PengurusApprovalsPage() {
               <span className="text-xs font-medium text-gray-900">
                 {pendingRequests.length} pengajuan
               </span>
+            </div>
+
+            {/* Estimated Installment & 40% Check */}
+            <div className="border-t border-gray-200 pt-2 mt-2 space-y-1.5">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Analisa Cicilan (40% Pendapatan)</p>
+              {(estimatedSaldoInstallment || 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">Cicilan saldo impor (est.)</span>
+                  <span className="text-xs font-medium text-gray-900">{formatCurrency(estimatedSaldoInstallment || 0)}/bln</span>
+                </div>
+              )}
+              {activeLoansMonthlyTotal > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-xs text-gray-500">Cicilan pinjaman aktif (app)</span>
+                  <span className="text-xs font-medium text-gray-900">{formatCurrency(activeLoansMonthlyTotal)}/bln</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-500">Cicilan pengajuan ini</span>
+                <span className="text-xs font-medium text-gray-900">{formatCurrency(newLoanInstallment)}/bln</span>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <span className="text-xs text-gray-700">Total cicilan</span>
+                <span className="text-xs text-gray-900">{formatCurrency(totalCicilanWithNew)}/bln</span>
+              </div>
+              {penghasilanBruto > 0 ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-gray-500">Pendapatan bruto</span>
+                    <span className="text-xs font-medium text-gray-900">{formatCurrency(penghasilanBruto)}/bln</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-gray-500">Maks 40% pendapatan</span>
+                    <span className="text-xs font-medium text-gray-900">{formatCurrency(maxAllowedCicilan)}/bln</span>
+                  </div>
+                  <div className={`mt-1 px-3 py-2 rounded-lg text-xs font-medium ${
+                    cicilanExceeds40
+                      ? "bg-red-50 text-red-700 border border-red-200"
+                      : "bg-green-50 text-green-700 border border-green-200"
+                  }`}>
+                    {cicilanExceeds40
+                      ? `Melebihi batas 40%: ${formatCurrency(totalCicilanWithNew)} > ${formatCurrency(maxAllowedCicilan)}`
+                      : `Dalam batas 40%: ${formatCurrency(totalCicilanWithNew)} / ${formatCurrency(maxAllowedCicilan)}`
+                    }
+                  </div>
+                </>
+              ) : (
+                <div className="mt-1 px-3 py-2 rounded-lg text-xs bg-yellow-50 text-yellow-700 border border-yellow-200">
+                  Pendapatan bruto tidak tersedia - tidak dapat menghitung rasio 40%
+                </div>
+              )}
             </div>
           </div>
         </div>

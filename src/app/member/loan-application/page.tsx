@@ -207,6 +207,7 @@ export default function LoanApplicationPage() {
         fetch("/api/member-balances"),
         fetch("/api/loans"),
       ]);
+      let saldoInstallment = 0;
       if (balRes.ok) {
         const data = await balRes.json();
         const total = data.pinjaman?.total || 0;
@@ -215,6 +216,8 @@ export default function LoanApplicationPage() {
           setPreviousBalance(total.toString());
           setBarangPreviousBalance(total.toString());
         }
+        // Estimated monthly installment from uploaded saldo (existing loans from Excel)
+        saldoInstallment = data.pinjaman?.estimatedMonthlyInstallment || 0;
       }
       if (loansRes.ok) {
         const loansData = await loansRes.json();
@@ -225,7 +228,13 @@ export default function LoanApplicationPage() {
           (sum: number, l: { monthlyInstallment: string }) => sum + parseFloat(l.monthlyInstallment || "0"),
           0
         );
-        setExistingMonthlyInstallment(totalMonthly);
+        // Combine: active system loans + estimated saldo from uploaded Excel data
+        setExistingMonthlyInstallment(totalMonthly + saldoInstallment);
+      } else {
+        // If loans API fails, still use saldo installment
+        if (saldoInstallment > 0) {
+          setExistingMonthlyInstallment(saldoInstallment);
+        }
       }
     } catch {
       // Silently ignore - balance fields remain editable

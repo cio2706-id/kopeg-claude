@@ -9,7 +9,7 @@ import {
   LOAN_TYPE_LABELS,
   LOAN_STATUS_LABELS,
 } from "@/lib/utils";
-import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save, Lock } from "lucide-react";
+import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save, Lock, ClipboardList } from "lucide-react";
 import Link from "next/link";
 
 interface LoanQuota {
@@ -486,6 +486,7 @@ export default function PengurusLoansPage() {
                     <th className="pb-3 font-medium text-center">Status</th>
                     <th className="pb-3 font-medium">Periode</th>
                     <th className="pb-3 font-medium text-center">Formulir</th>
+                    <th className="pb-3 font-medium text-center">Kartu</th>
                     <th className="pb-3 font-medium">Aksi</th>
                   </tr>
                 </thead>
@@ -547,6 +548,19 @@ export default function PengurusLoansPage() {
                           >
                             <FileDown className="w-3.5 h-3.5" />
                             PDF
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 text-center">
+                        {["disbursed", "selesai", "bank_process"].includes(loan.status) ? (
+                          <Link
+                            href={`/pengurus/loans/${loan.id}/kartu`}
+                            className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 font-medium"
+                          >
+                            <ClipboardList className="w-3.5 h-3.5" />
+                            Kartu
                           </Link>
                         ) : (
                           <span className="text-xs text-gray-300">—</span>
