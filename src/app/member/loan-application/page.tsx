@@ -188,6 +188,7 @@ export default function LoanApplicationPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loanBalanceTotal, setLoanBalanceTotal] = useState<number>(0);
   const [existingMonthlyInstallment, setExistingMonthlyInstallment] = useState<number>(0);
+  const [installmentSource, setInstallmentSource] = useState<string>("estimated");
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -208,6 +209,7 @@ export default function LoanApplicationPage() {
         fetch("/api/loans"),
       ]);
       let saldoInstallment = 0;
+      let source = "estimated";
       if (balRes.ok) {
         const data = await balRes.json();
         const total = data.pinjaman?.total || 0;
@@ -216,8 +218,8 @@ export default function LoanApplicationPage() {
           setPreviousBalance(total.toString());
           setBarangPreviousBalance(total.toString());
         }
-        // Estimated monthly installment from uploaded saldo (existing loans from Excel)
         saldoInstallment = data.pinjaman?.estimatedMonthlyInstallment || 0;
+        source = data.pinjaman?.installmentSource || "estimated";
       }
       if (loansRes.ok) {
         const loansData = await loansRes.json();
@@ -228,12 +230,13 @@ export default function LoanApplicationPage() {
           (sum: number, l: { monthlyInstallment: string }) => sum + parseFloat(l.monthlyInstallment || "0"),
           0
         );
-        // Combine: active system loans + estimated saldo from uploaded Excel data
+        // Combine: active system loans + imported saldo installments
         setExistingMonthlyInstallment(totalMonthly + saldoInstallment);
+        setInstallmentSource(totalMonthly > 0 ? "app+" + source : source);
       } else {
-        // If loans API fails, still use saldo installment
         if (saldoInstallment > 0) {
           setExistingMonthlyInstallment(saldoInstallment);
+          setInstallmentSource(source);
         }
       }
     } catch {
@@ -990,6 +993,11 @@ export default function LoanApplicationPage() {
                     Total cicilan ({formatCurrency(totalCicilanWithNew)}) melebihi 40% dari pendapatan bulanan ({formatCurrency(maxAllowedCicilan)}).
                     Pinjaman tidak dapat diproses.
                   </p>
+                  {existingMonthlyInstallment > 0 && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Cicilan existing: {formatCurrency(existingMonthlyInstallment)}/bln + pengajuan baru: {formatCurrency(monthlyInstallment)}/bln
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -1002,6 +1010,13 @@ export default function LoanApplicationPage() {
                   {existingMonthlyInstallment > 0 && (
                     <span className="block mt-1 text-green-600">
                       Termasuk cicilan pinjaman aktif: {formatCurrency(existingMonthlyInstallment)}/bulan
+                      {installmentSource.includes("potongan")
+                        ? " (dari data potongan gaji)"
+                        : installmentSource.includes("excel_angsuran")
+                        ? " (dari data angsuran Excel)"
+                        : installmentSource.includes("estimated")
+                        ? " (estimasi dari saldo)"
+                        : ""}
                     </span>
                   )}
                 </p>

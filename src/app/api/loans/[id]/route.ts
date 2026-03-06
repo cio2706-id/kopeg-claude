@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { loans, approvals, users, loanBalances, loanInstallments } from "@/lib/db/schema";
+import { loans, approvals, users, loanBalances, loanInstallments, monthlyDeductions } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq, and, ne, notInArray } from "drizzle-orm";
+import { eq, and, ne, notInArray, sql } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
@@ -128,32 +128,58 @@ export async function GET(
       .select({
         loanType: loanBalances.loanType,
         saldo: loanBalances.saldo,
+        monthlyInstallment: loanBalances.monthlyInstallment,
       })
       .from(loanBalances)
       .where(eq(loanBalances.userId, loan.userId));
 
-    // 6b. Estimate monthly installments from uploaded saldo
-    // Based on kartu pinjaman Excel analysis:
-    // - Reguler: 10-month flat principal
-    // - Khusus: varies, estimate 24-month average
-    // - Barang: typically 10-month flat principal
-    // - Channeling: excluded (handled by bank)
+    // 6b. Get actual monthly deduction from potongan data (most accurate)
+    const deductionRows = await db
+      .select({
+        period: monthlyDeductions.period,
+        totalPinjaman: sql<string>`sum(${monthlyDeductions.pinjamanAmount})`,
+      })
+      .from(monthlyDeductions)
+      .where(eq(monthlyDeductions.userId, loan.userId))
+      .groupBy(monthlyDeductions.period)
+      .orderBy(sql`${monthlyDeductions.period} DESC`)
+      .limit(1);
+
+    const actualMonthlyDeduction = deductionRows.length > 0
+      ? parseFloat(deductionRows[0].totalPinjaman || "0")
+      : 0;
+
+    // 6c. Calculate installment from loanBalances (monthlyInstallment or saldo/tenor fallback)
     const ESTIMATED_TENOR: Record<string, number> = {
       reguler: 10,
       khusus: 24,
       barang: 10,
     };
-    let estimatedSaldoInstallment = 0;
+    let loanBalanceInstallment = 0;
+    let estimatedInstallment = 0;
     for (const lb of importedBalances) {
       const saldo = parseFloat(lb.saldo || "0");
       if (saldo > 0) {
-        const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
-        const tenor = ESTIMATED_TENOR[baseType];
-        if (tenor) {
-          estimatedSaldoInstallment += Math.ceil(saldo / tenor);
+        if (lb.monthlyInstallment) {
+          loanBalanceInstallment += parseFloat(lb.monthlyInstallment);
+        } else {
+          const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
+          const tenor = ESTIMATED_TENOR[baseType];
+          if (tenor) {
+            estimatedInstallment += Math.ceil(saldo / tenor);
+          }
         }
       }
     }
+
+    // Priority: potongan > Excel angsuran > saldo/tenor estimate
+    const estimatedSaldoInstallment = actualMonthlyDeduction > 0
+      ? actualMonthlyDeduction
+      : (loanBalanceInstallment > 0 ? loanBalanceInstallment : estimatedInstallment);
+
+    const installmentSource = actualMonthlyDeduction > 0
+      ? "potongan"
+      : (loanBalanceInstallment > 0 ? "excel_angsuran" : "estimated");
 
     // 7. Fetch installment schedule (kartu pinjaman)
     const installments = await db
@@ -170,6 +196,7 @@ export async function GET(
       approvalSteps,
       loanBalances: importedBalances,
       estimatedSaldoInstallment,
+      installmentSource,
       installments,
     });
   } catch (error) {

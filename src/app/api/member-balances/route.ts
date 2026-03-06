@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { savings, loanBalances } from "@/lib/db/schema";
+import { savings, loanBalances, monthlyDeductions } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { eq, sql } from "drizzle-orm";
@@ -28,17 +28,30 @@ export async function GET() {
       .from(loanBalances)
       .where(eq(loanBalances.userId, dbUser.id));
 
-    // Group by loan type and estimate monthly installments
+    // Get actual monthly deduction from potongan data (most accurate source)
+    // Sum pinjamanAmount from the latest period across all source files
+    const deductionRows = await db
+      .select({
+        period: monthlyDeductions.period,
+        totalPinjaman: sql<string>`sum(${monthlyDeductions.pinjamanAmount})`,
+      })
+      .from(monthlyDeductions)
+      .where(eq(monthlyDeductions.userId, dbUser.id))
+      .groupBy(monthlyDeductions.period)
+      .orderBy(sql`${monthlyDeductions.period} DESC`)
+      .limit(1);
+
+    const actualMonthlyDeduction = deductionRows.length > 0
+      ? parseFloat(deductionRows[0].totalPinjaman || "0")
+      : 0;
+    const deductionPeriod = deductionRows.length > 0 ? deductionRows[0].period : null;
+
+    // Group by loan type
     const pinjamanByType: Record<string, number> = {};
     let totalPinjaman = 0;
-    let estimatedSaldoInstallment = 0;
+    let loanBalanceInstallment = 0; // from loanBalances.monthlyInstallment if set
+    let estimatedInstallment = 0; // fallback: saldo / assumed tenor
 
-    // Default tenor assumptions per loan type for installment estimation
-    // Based on analysis of actual kartu pinjaman Excel files:
-    // - Reguler: 10 months, flat principal (no interest in installment)
-    // - Khusus: varies (10-60 months), use 24 as middle estimate
-    // - Barang: varies (3-36 months), typically 10 months flat principal
-    // - Channeling: handled by bank, excluded from installment calculation
     const ESTIMATED_TENOR: Record<string, number> = {
       reguler: 10,
       khusus: 24,
@@ -51,15 +64,24 @@ export async function GET() {
         pinjamanByType[lb.loanType] = (pinjamanByType[lb.loanType] || 0) + saldo;
         totalPinjaman += saldo;
 
-        // Estimate monthly installment from remaining saldo
-        // Skip channeling types (handled by bank, not deducted from salary)
-        const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
-        const tenor = ESTIMATED_TENOR[baseType];
-        if (tenor) {
-          estimatedSaldoInstallment += Math.ceil(saldo / tenor);
+        // Use actual monthlyInstallment from Excel if available
+        if (lb.monthlyInstallment) {
+          loanBalanceInstallment += parseFloat(lb.monthlyInstallment);
+        } else {
+          // Fallback: estimate from saldo / tenor (skip channeling)
+          const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
+          const tenor = ESTIMATED_TENOR[baseType];
+          if (tenor) {
+            estimatedInstallment += Math.ceil(saldo / tenor);
+          }
         }
       }
     }
+
+    // Priority: actualMonthlyDeduction (potongan) > loanBalanceInstallment (Excel angsuran) > estimatedInstallment (saldo/tenor)
+    const bestInstallment = actualMonthlyDeduction > 0
+      ? actualMonthlyDeduction
+      : (loanBalanceInstallment > 0 ? loanBalanceInstallment : estimatedInstallment);
 
     return NextResponse.json({
       simpanan: latestSavings ? {
@@ -74,7 +96,11 @@ export async function GET() {
       pinjaman: {
         byType: pinjamanByType,
         total: totalPinjaman,
-        estimatedMonthlyInstallment: estimatedSaldoInstallment,
+        estimatedMonthlyInstallment: bestInstallment,
+        installmentSource: actualMonthlyDeduction > 0
+          ? "potongan"
+          : (loanBalanceInstallment > 0 ? "excel_angsuran" : "estimated"),
+        deductionPeriod,
       },
     });
   } catch (error) {

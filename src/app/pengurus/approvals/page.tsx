@@ -73,6 +73,7 @@ interface LoanDetail {
   approvalSteps: ApprovalStep[];
   loanBalances?: { loanType: string; saldo: string }[];
   estimatedSaldoInstallment?: number;
+  installmentSource?: string;
 }
 
 interface PoItemData {
@@ -467,7 +468,7 @@ export default function PengurusApprovalsPage() {
       );
     }
 
-    const { loan, requester, activeLoans, pendingRequests, approvalSteps, loanBalances: importedBalances, estimatedSaldoInstallment } = detail;
+    const { loan, requester, activeLoans, pendingRequests, approvalSteps, loanBalances: importedBalances, estimatedSaldoInstallment, installmentSource } = detail;
     const activeLoansTotal = activeLoans.reduce(
       (sum, l) => sum + parseFloat(l.amount),
       0
@@ -659,7 +660,10 @@ export default function PengurusApprovalsPage() {
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Analisa Cicilan (40% Pendapatan)</p>
               {(estimatedSaldoInstallment || 0) > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-xs text-gray-500">Cicilan saldo impor (est.)</span>
+                  <span className="text-xs text-gray-500">
+                    Cicilan saldo impor
+                    {installmentSource === "potongan" ? " (potongan gaji)" : installmentSource === "excel_angsuran" ? " (angsuran Excel)" : " (est.)"}
+                  </span>
                   <span className="text-xs font-medium text-gray-900">{formatCurrency(estimatedSaldoInstallment || 0)}/bln</span>
                 </div>
               )}

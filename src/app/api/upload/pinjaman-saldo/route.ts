@@ -12,6 +12,7 @@ const LOAN_TYPE_CONFIGS: Record<string, {
   sheetName: string | string[];
   nameCol: number;
   saldoCol: number;
+  angsuranCol?: number; // column with monthly installment (angsuran/bulan)
   dataStartRow: number;
   sections?: { name: string; startRow: number; endRow?: number }[];
 }> = {
@@ -29,18 +30,21 @@ const LOAN_TYPE_CONFIGS: Record<string, {
     sheetName: "PIUTANG KHUSUS",
     nameCol: 1, // B
     saldoCol: 56, // BE = "Saldo Piutang Khusus 2025"
+    angsuranCol: 4, // E = "Angsuran/bulan" (monthly installment)
     dataStartRow: 4,
   },
   reguler: {
     sheetName: ["REKAP PIUTANG REGULER", "PIUTANG REGULER"],
     nameCol: 1, // B
     saldoCol: 54, // BC = "SALDO HUTANG PIUTANG 2025"
+    angsuranCol: 4, // E = "Angsuran/bulan" (monthly installment)
     dataStartRow: 4,
   },
   barang: {
     sheetName: "Kertas Kerja",
     nameCol: 1, // B
     saldoCol: 29, // AD = "Saldo per 2025"
+    angsuranCol: 5, // F = "Angsuran/bulan" (monthly installment)
     dataStartRow: 4,
   },
 };
@@ -121,6 +125,9 @@ export async function POST(request: NextRequest) {
       const saldo = parseNum(row[config.saldoCol]);
       if (saldo <= 0) return; // Skip zero/negative balances
 
+      // Extract monthly installment if column is configured
+      const angsuran = config.angsuranCol !== undefined ? parseNum(row[config.angsuranCol]) : 0;
+
       const userId = await findMemberByIdOrName(null, nameStr);
       if (!userId) {
         skipped++;
@@ -142,6 +149,7 @@ export async function POST(request: NextRequest) {
         loanType: subType,
         period,
         saldo: saldo.toString(),
+        monthlyInstallment: angsuran > 0 ? angsuran.toString() : null,
         uploadBatchId: batchId,
       });
 

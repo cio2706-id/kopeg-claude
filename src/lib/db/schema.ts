@@ -359,6 +359,7 @@ export const loanBalances = pgTable("loan_balances", {
   loanType: varchar("loan_type", { length: 50 }).notNull(), // reguler, khusus, barang, channeling_mandiri, channeling_bsi
   period: varchar("period", { length: 7 }).notNull(), // "2025-12"
   saldo: numeric("saldo", { precision: 15, scale: 2 }).default("0"),
+  monthlyInstallment: numeric("monthly_installment", { precision: 15, scale: 2 }), // actual angsuran/bulan from Excel
   uploadBatchId: varchar("upload_batch_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
