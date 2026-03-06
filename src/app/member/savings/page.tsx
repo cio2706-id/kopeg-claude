@@ -168,19 +168,19 @@ export default function SavingsPage() {
         {summaryCards.map((card) => (
           <div
             key={card.label}
-            className="bg-white rounded-2xl p-5 shadow-sm flex items-start gap-3"
+            className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col gap-2"
           >
-            <div
-              className={`w-11 h-11 rounded-full ${card.bg} flex items-center justify-center shrink-0`}
-            >
-              <Wallet className={`w-5 h-5 ${card.iconBg}`} />
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-9 h-9 rounded-full ${card.bg} flex items-center justify-center shrink-0`}
+              >
+                <Wallet className={`w-4 h-4 ${card.iconBg}`} />
+              </div>
+              <p className="text-xs text-gray-500 leading-tight">{card.label}</p>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500 truncate">{card.label}</p>
-              <p className="text-lg font-bold text-gray-900 mt-0.5 truncate">
-                {formatCurrency(card.value)}
-              </p>
-            </div>
+            <p className="text-base font-bold text-gray-900 break-all leading-tight">
+              {formatCurrency(card.value)}
+            </p>
           </div>
         ))}
       </div>

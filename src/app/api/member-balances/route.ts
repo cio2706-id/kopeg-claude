@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { savings, loanBalances, monthlyDeductions } from "@/lib/db/schema";
+import { savings, loanBalances, monthlyDeductions, loans } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { eq, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -22,14 +22,29 @@ export async function GET() {
       .orderBy(sql`${savings.period} DESC`)
       .limit(1);
 
-    // Get all loan balances
+    // Get all loan balances (from Excel imports + auto-disbursement)
     const loanBals = await db
       .select()
       .from(loanBalances)
       .where(eq(loanBalances.userId, dbUser.id));
 
+    // Also get disbursed loans from the loans table to ensure newly disbursed loans are reflected
+    const disbursedLoans = await db
+      .select({
+        loanType: loans.loanType,
+        amount: loans.amount,
+        tenorMonths: loans.tenorMonths,
+        monthlyInstallment: loans.monthlyInstallment,
+      })
+      .from(loans)
+      .where(
+        and(
+          eq(loans.userId, dbUser.id),
+          inArray(loans.status, ["disbursed", "selesai"])
+        )
+      );
+
     // Get actual monthly deduction from potongan data (most accurate source)
-    // Sum pinjamanAmount from the latest period across all source files
     const deductionRows = await db
       .select({
         period: monthlyDeductions.period,
@@ -46,11 +61,11 @@ export async function GET() {
       : 0;
     const deductionPeriod = deductionRows.length > 0 ? deductionRows[0].period : null;
 
-    // Group by loan type
+    // Group by loan type from loanBalances
     const pinjamanByType: Record<string, number> = {};
     let totalPinjaman = 0;
-    let loanBalanceInstallment = 0; // from loanBalances.monthlyInstallment if set
-    let estimatedInstallment = 0; // fallback: saldo / assumed tenor
+    let loanBalanceInstallment = 0;
+    let estimatedInstallment = 0;
 
     const ESTIMATED_TENOR: Record<string, number> = {
       reguler: 10,
@@ -64,11 +79,9 @@ export async function GET() {
         pinjamanByType[lb.loanType] = (pinjamanByType[lb.loanType] || 0) + saldo;
         totalPinjaman += saldo;
 
-        // Use actual monthlyInstallment from Excel if available
         if (lb.monthlyInstallment) {
           loanBalanceInstallment += parseFloat(lb.monthlyInstallment);
         } else {
-          // Fallback: estimate from saldo / tenor (skip channeling)
           const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
           const tenor = ESTIMATED_TENOR[baseType];
           if (tenor) {
@@ -76,6 +89,29 @@ export async function GET() {
           }
         }
       }
+    }
+
+    // Also aggregate from disbursed loans table (in case loanBalances wasn't updated)
+    // This ensures newly disbursed loans always show up on dashboard
+    const disbursedByType: Record<string, number> = {};
+    for (const dl of disbursedLoans) {
+      const amount = parseFloat(dl.amount || "0");
+      if (amount > 0) {
+        disbursedByType[dl.loanType] = (disbursedByType[dl.loanType] || 0) + amount;
+      }
+    }
+
+    // Merge: use the higher value between loanBalances and disbursed loans per type
+    // This handles both imported data and newly disbursed loans
+    const allTypes = new Set([...Object.keys(pinjamanByType), ...Object.keys(disbursedByType)]);
+    const mergedByType: Record<string, number> = {};
+    let mergedTotal = 0;
+    for (const type of allTypes) {
+      const fromBalance = pinjamanByType[type] || 0;
+      const fromLoans = disbursedByType[type] || 0;
+      const best = Math.max(fromBalance, fromLoans);
+      mergedByType[type] = best;
+      mergedTotal += best;
     }
 
     // Priority: actualMonthlyDeduction (potongan) > loanBalanceInstallment (Excel angsuran) > estimatedInstallment (saldo/tenor)
@@ -94,8 +130,8 @@ export async function GET() {
         total: latestSavings.totalBalance,
       } : null,
       pinjaman: {
-        byType: pinjamanByType,
-        total: totalPinjaman,
+        byType: mergedByType,
+        total: mergedTotal,
         estimatedMonthlyInstallment: bestInstallment,
         installmentSource: actualMonthlyDeduction > 0
           ? "potongan"
