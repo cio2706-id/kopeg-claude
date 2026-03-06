@@ -20,6 +20,7 @@ import {
   Car,
   Clock,
   CheckCircle2,
+  Database,
 } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -50,12 +51,21 @@ interface Loan {
   holdReason: string | null;
 }
 
+interface LoanBalanceDetail {
+  id: string;
+  loanType: string;
+  period: string;
+  saldo: string;
+  monthlyInstallment: string | null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Page component                                                     */
 /* ------------------------------------------------------------------ */
 
 export default function LoansPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [existingBalances, setExistingBalances] = useState<LoanBalanceDetail[]>([]);
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
@@ -77,10 +87,17 @@ export default function LoansPage() {
     setUserEmail(user.email || "");
 
     try {
-      const res = await fetch("/api/loans");
-      if (res.ok) {
-        const data = await res.json();
+      const [loansRes, balancesRes] = await Promise.all([
+        fetch("/api/loans"),
+        fetch("/api/member-balances"),
+      ]);
+      if (loansRes.ok) {
+        const data = await loansRes.json();
         setLoans(data.loans || []);
+      }
+      if (balancesRes.ok) {
+        const data = await balancesRes.json();
+        setExistingBalances(data.loanBalanceDetails || []);
       }
     } catch (error) {
       console.error("Failed to load loans:", error);
@@ -143,6 +160,17 @@ export default function LoansPage() {
     (a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+
+  const EXISTING_LOAN_TYPE_LABELS: Record<string, string> = {
+    reguler: "Pinjaman Reguler",
+    khusus: "Pinjaman Khusus",
+    barang: "Pinjaman Barang",
+    travel: "Pinjaman Travel",
+    kepemilikan_kendaraan: "Pinjaman Kendaraan",
+    channeling_mandiri: "Channeling Mandiri",
+    channeling_bsi: "Channeling BSI",
+    channeling: "Channeling",
+  };
 
   const LOAN_TYPE_ICONS: Record<string, React.ReactNode> = {
     reguler: <CreditCard className="w-4 h-4 text-teal-600" />,
@@ -474,7 +502,7 @@ export default function LoansPage() {
       {/* ============================================================ */}
       {/*  Pinjaman Dalam Proses (On Progress)                          */}
       {/* ============================================================ */}
-      <div className="space-y-4">
+      <div className="space-y-4 mb-8">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-amber-600" />
           <h2 className="font-semibold text-gray-900 text-sm">
@@ -623,6 +651,68 @@ export default function LoansPage() {
             })
         )}
       </div>
+
+      {/* ============================================================ */}
+      {/*  Pinjaman Existing (from imported Excel / loanBalances)       */}
+      {/* ============================================================ */}
+      {existingBalances.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-blue-600" />
+            <h2 className="font-semibold text-gray-900 text-sm">
+              Pinjaman Existing (Data Kertas Kerja)
+            </h2>
+            <span className="text-xs text-gray-400">({existingBalances.length})</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {existingBalances.map((bal) => {
+              const saldo = parseFloat(bal.saldo || "0");
+              const installment = bal.monthlyInstallment ? parseFloat(bal.monthlyInstallment) : null;
+              const typeLabel = EXISTING_LOAN_TYPE_LABELS[bal.loanType] || bal.loanType;
+              const bg = LOAN_TYPE_BG[bal.loanType] || LOAN_TYPE_BG[bal.loanType.split("_")[0]] || "bg-gray-100";
+              const icon = LOAN_TYPE_ICONS[bal.loanType] || LOAN_TYPE_ICONS[bal.loanType.split("_")[0]] || <CreditCard className="w-4 h-4 text-gray-600" />;
+
+              return (
+                <div key={bal.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 border-blue-400">
+                  <div className="px-5 py-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
+                        {icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{typeLabel}</p>
+                        <p className="text-[11px] text-gray-400">Periode: {bal.period}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Saldo Pinjaman</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(saldo)}</span>
+                      </div>
+                      {installment && installment > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Angsuran/Bulan</span>
+                          <span className="font-semibold text-gray-700">{formatCurrency(installment)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <Link
+                      href={`/member/loans/existing/${bal.id}/kartu`}
+                      className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-blue-100 transition border border-blue-200 w-full justify-center"
+                    >
+                      <ClipboardList className="w-3.5 h-3.5" />
+                      Kartu Pinjaman
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

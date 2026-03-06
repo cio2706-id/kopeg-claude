@@ -28,19 +28,21 @@ export async function GET() {
       .from(loanBalances)
       .where(eq(loanBalances.userId, dbUser.id));
 
-    // Also get disbursed loans from the loans table to ensure newly disbursed loans are reflected
+    // Also get active loans from the loans table to ensure all loans are reflected
+    // Include approved + in-process + disbursed statuses (not just disbursed/selesai)
     const disbursedLoans = await db
       .select({
         loanType: loans.loanType,
         amount: loans.amount,
         tenorMonths: loans.tenorMonths,
         monthlyInstallment: loans.monthlyInstallment,
+        status: loans.status,
       })
       .from(loans)
       .where(
         and(
           eq(loans.userId, dbUser.id),
-          inArray(loans.status, ["disbursed", "selesai"])
+          inArray(loans.status, ["approved", "spp_process", "bank_process", "disbursed", "selesai"])
         )
       );
 
@@ -119,6 +121,17 @@ export async function GET() {
       ? actualMonthlyDeduction
       : (loanBalanceInstallment > 0 ? loanBalanceInstallment : estimatedInstallment);
 
+    // Build detailed loan balances list for loans page
+    const loanBalanceDetails = loanBals
+      .filter((lb) => parseFloat(lb.saldo || "0") > 0)
+      .map((lb) => ({
+        id: lb.id,
+        loanType: lb.loanType,
+        period: lb.period,
+        saldo: lb.saldo,
+        monthlyInstallment: lb.monthlyInstallment,
+      }));
+
     return NextResponse.json({
       simpanan: latestSavings ? {
         period: latestSavings.period,
@@ -138,6 +151,7 @@ export async function GET() {
           : (loanBalanceInstallment > 0 ? "excel_angsuran" : "estimated"),
         deductionPeriod,
       },
+      loanBalanceDetails,
     });
   } catch (error) {
     console.error("Failed to fetch member balances:", error);
