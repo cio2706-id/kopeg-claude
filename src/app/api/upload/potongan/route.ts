@@ -128,9 +128,11 @@ export async function POST(request: NextRequest) {
 
     if (existingDeductions.length > 0) {
       // Reverse the savings/loan balance changes from previous upload
+      // Collect unique user IDs to reverse loan balance deductions once per user
+      const reversedUserIds = new Set<string>();
+
       for (const ded of existingDeductions) {
         const simpananAmt = parseFloat(ded.simpananAmount || "0");
-        const pinjamanAmt = parseFloat(ded.pinjamanAmount || "0");
 
         // Reverse savings increase
         if (simpananAmt > 0) {
@@ -152,25 +154,20 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Reverse loan balance deduction (add back the pinjaman amount)
-        if (pinjamanAmt > 0) {
+        // Reverse loan balance deduction: add back each loan's monthly_installment
+        if (!reversedUserIds.has(ded.userId)) {
+          reversedUserIds.add(ded.userId);
           const activeLoanBals = await db
             .select()
             .from(loanBalances)
             .where(eq(loanBalances.userId, ded.userId));
 
-          const totalLoanSaldo = activeLoanBals.reduce(
-            (sum, lb) => sum + parseFloat(lb.saldo || "0"), 0
-          );
-          const totalWithPinjaman = totalLoanSaldo + pinjamanAmt;
-
-          if (totalWithPinjaman > 0) {
-            for (const lb of activeLoanBals) {
+          for (const lb of activeLoanBals) {
+            const installment = parseFloat(lb.monthlyInstallment || "0");
+            if (installment > 0) {
               const lbSaldo = parseFloat(lb.saldo || "0");
-              const proportion = lbSaldo / totalLoanSaldo || (1 / activeLoanBals.length);
-              const addBack = pinjamanAmt * proportion;
               await db.update(loanBalances).set({
-                saldo: (lbSaldo + addBack).toString(),
+                saldo: (lbSaldo + installment).toString(),
                 updatedAt: new Date(),
               }).where(eq(loanBalances.id, lb.id));
             }
@@ -192,8 +189,10 @@ export async function POST(request: NextRequest) {
     let skipped = 0;
     let totalSimpanan = 0;
     let totalPinjaman = 0;
+    let totalSaldoReduced = 0;
     const errors: string[] = [];
     const isReupload = existingDeductions.length > 0;
+    const processedLoanUsers = new Set<string>(); // track users whose loan saldo already reduced
 
     const parseNum = (v: string | number | null | undefined) => {
       if (v === null || v === undefined || v === "" || v === "-") return 0;
@@ -257,30 +256,25 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Update loan balances: subtract pinjaman from all active loans proportionally
-      if (pinjaman > 0) {
+      // Update loan balances: reduce each loan's saldo by its own monthly_installment from kertas kerja
+      // (only do this once per user per upload, tracked by processedLoanUsers set)
+      if (!processedLoanUsers.has(userId)) {
+        processedLoanUsers.add(userId);
         const activeLoanBalances = await db
           .select()
           .from(loanBalances)
           .where(eq(loanBalances.userId, userId));
 
-        const totalLoanSaldo = activeLoanBalances.reduce(
-          (sum, lb) => sum + parseFloat(lb.saldo || "0"), 0
-        );
-
-        if (totalLoanSaldo > 0) {
-          // Distribute deduction proportionally across loan types
-          for (const lb of activeLoanBalances) {
-            const lbSaldo = parseFloat(lb.saldo || "0");
-            if (lbSaldo <= 0) continue;
-            const proportion = lbSaldo / totalLoanSaldo;
-            const deduction = Math.min(pinjaman * proportion, lbSaldo);
-            const newSaldo = Math.max(0, lbSaldo - deduction);
-
+        for (const lb of activeLoanBalances) {
+          const installment = parseFloat(lb.monthlyInstallment || "0");
+          const lbSaldo = parseFloat(lb.saldo || "0");
+          if (installment > 0 && lbSaldo > 0) {
+            const newSaldo = Math.max(0, lbSaldo - installment);
             await db.update(loanBalances).set({
               saldo: newSaldo.toString(),
               updatedAt: new Date(),
             }).where(eq(loanBalances.id, lb.id));
+            totalSaldoReduced += installment;
           }
         }
       }
@@ -307,6 +301,7 @@ export async function POST(request: NextRequest) {
       skipped,
       totalSimpanan,
       totalPinjaman,
+      totalSaldoReduced,
       sheet: usedSheetName,
       errors: errors.slice(0, 20),
       batchId,

@@ -37,6 +37,7 @@ interface UploadResult {
   totalAmount?: number;
   totalSimpanan?: number;
   totalPinjaman?: number;
+  totalSaldoReduced?: number;
   sheet?: string;
   errors?: string[];
   error?: string;
@@ -784,10 +785,19 @@ function UploadResultDisplay({ result }: { result: UploadResult }) {
         )}
         {result.totalPinjaman !== undefined && (
           <div className="bg-white rounded-lg p-3">
-            <p className="text-xs text-gray-500">Total Pinjaman</p>
+            <p className="text-xs text-gray-500">Total Pinjaman (40% rule)</p>
             <p className="text-sm font-semibold text-gray-900">
               {formatCurrency(result.totalPinjaman)}
             </p>
+          </div>
+        )}
+        {result.totalSaldoReduced !== undefined && result.totalSaldoReduced > 0 && (
+          <div className="bg-white rounded-lg p-3">
+            <p className="text-xs text-gray-500">Saldo Dikurangi</p>
+            <p className="text-sm font-semibold text-gray-900">
+              {formatCurrency(result.totalSaldoReduced)}
+            </p>
+            <p className="text-xs text-gray-400">dari angsuran kertas kerja</p>
           </div>
         )}
         {result.sheet && (
