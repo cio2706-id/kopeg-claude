@@ -20,6 +20,8 @@ import {
   Car,
   Clock,
   CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -48,6 +50,7 @@ interface Loan {
   queueNumber: number | null;
   queuePeriod: string | null;
   holdReason: string | null;
+  rejectionReason: string | null;
 }
 
 interface LoanBalanceDetail {
@@ -128,6 +131,8 @@ export default function LoansPage() {
       l.status !== "disbursed" &&
       l.status !== "selesai"
   );
+  // Rejected loans
+  const rejectedLoans = loans.filter((l) => l.status === "rejected");
 
   const totalDisbursedAmount = disbursedLoans.reduce(
     (sum, l) => sum + parseFloat(l.amount),
@@ -605,6 +610,63 @@ export default function LoansPage() {
           })()
         )}
       </div>
+
+      {/* ============================================================ */}
+      {/*  Pinjaman Ditolak (Rejected)                                  */}
+      {/* ============================================================ */}
+      {rejectedLoans.length > 0 && (
+        <div className="space-y-4 mb-8">
+          <div className="flex items-center gap-2">
+            <XCircle className="w-4 h-4 text-red-500" />
+            <h2 className="font-semibold text-gray-900 text-sm">
+              Pinjaman Ditolak
+            </h2>
+            <span className="text-xs text-gray-400">({rejectedLoans.length})</span>
+          </div>
+
+          {[...rejectedLoans]
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .map((loan) => (
+              <div key={loan.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 border-red-400">
+                <div className="px-6 py-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-mono text-xs text-teal-600 font-medium">
+                          {loan.trackingNumber}
+                        </span>
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap bg-red-100 text-red-700">
+                          Ditolak
+                        </span>
+                      </div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {LOAN_TYPE_LABELS[loan.loanType] || loan.loanType}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(loan.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-bold text-gray-900">{formatCurrency(loan.amount)}</p>
+                      <p className="text-xs text-gray-500">
+                        {loan.tenorMonths} bln
+                      </p>
+                    </div>
+                  </div>
+                  {loan.rejectionReason && (
+                    <div className="mt-3 bg-red-50 border border-red-100 rounded-xl p-3 flex gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-red-700 mb-0.5">Alasan Penolakan:</p>
+                        <p className="text-xs text-red-600">{loan.rejectionReason}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/*  Pinjaman Dalam Proses (On Progress)                          */}

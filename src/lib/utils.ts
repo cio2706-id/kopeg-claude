@@ -1,3 +1,13 @@
+export function formatNumberInput(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  return new Intl.NumberFormat("id-ID").format(parseInt(digits, 10));
+}
+
+export function parseFormattedNumber(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 export function formatCurrency(amount: number | string): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   return new Intl.NumberFormat("id-ID", {

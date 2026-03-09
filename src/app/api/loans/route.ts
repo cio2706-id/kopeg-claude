@@ -4,7 +4,7 @@ import { loans, approvals, loanQuotas } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
 import { calculateMonthlyInstallment, generateTrackingNumber, LOAN_APPROVAL_STEPS, InterestMethod } from "@/lib/utils";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { LOAN_COA_MAP } from "@/lib/accurate";
 
@@ -72,12 +72,25 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const queuePeriod = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
 
-    const [maxQueue] = await db
-      .select({ maxNum: sql<number>`COALESCE(MAX(${loans.queueNumber}), 0)` })
-      .from(loans)
-      .where(eq(loans.queuePeriod, queuePeriod));
+    // Count only active (in-process) loans for queue numbering
+    // Exclude disbursed, rejected, and selesai loans so numbers reset
+    const activeStatuses = [
+      "pending_sekper", "pending_treasury", "analysis", "pending_manager",
+      "pending_bendahara", "pending_ketua", "approved", "spp_process",
+      "bank_process", "on_review", "held", "draft",
+    ] as const;
 
-    const queueNumber = (maxQueue?.maxNum || 0) + 1;
+    const [activeCount] = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(loans)
+      .where(
+        and(
+          eq(loans.queuePeriod, queuePeriod),
+          inArray(loans.status, [...activeStatuses])
+        )
+      );
+
+    const queueNumber = (activeCount?.count || 0) + 1;
 
     // Check if quota is already exceeded for this period/type → auto-hold
     let shouldHold = false;
@@ -209,7 +222,33 @@ export async function GET(request: NextRequest) {
             .from(loans)
             .where(eq(loans.userId, dbUser.id));
 
-    return NextResponse.json({ loans: userLoans });
+    // For each rejected loan, fetch the rejection reason from approvals
+    const rejectedLoans = userLoans.filter((l) => l.status === "rejected");
+    const rejectionReasons: Record<string, string> = {};
+    for (const loan of rejectedLoans) {
+      const [rejection] = await db
+        .select({ comments: approvals.comments })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.referenceId, loan.id),
+            eq(approvals.referenceType, "loan"),
+            eq(approvals.action, "reject")
+          )
+        )
+        .orderBy(desc(approvals.decidedAt))
+        .limit(1);
+      if (rejection?.comments) {
+        rejectionReasons[loan.id] = rejection.comments;
+      }
+    }
+
+    const loansWithReasons = userLoans.map((loan) => ({
+      ...loan,
+      rejectionReason: rejectionReasons[loan.id] || null,
+    }));
+
+    return NextResponse.json({ loans: loansWithReasons });
   } catch (error) {
     console.error("Failed to fetch loans:", error);
     const message =

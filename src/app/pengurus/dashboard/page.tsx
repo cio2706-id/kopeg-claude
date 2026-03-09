@@ -227,7 +227,10 @@ export default function PengurusDashboardPage() {
     (po) => !["completed", "rejected"].includes(po.status)
   );
 
-  const totalLoanAmount = loans.reduce(
+  const disbursedLoans = loans.filter(
+    (l) => l.status === "disbursed" || l.status === "selesai"
+  );
+  const totalLoanAmount = disbursedLoans.reduce(
     (sum, l) => sum + parseFloat(l.amount || "0"),
     0
   );
@@ -449,14 +452,14 @@ export default function PengurusDashboardPage() {
               <Wallet className="w-5 h-5 text-gray-500" />
             </div>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              Total Pinjaman
+              Total Pinjaman Dicairkan
             </p>
           </div>
           <p className="text-sm font-bold text-gray-900 break-all leading-tight">
             {formatCurrency(totalLoanAmount)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            {loans.length} pinjaman
+            {disbursedLoans.length} pinjaman dicairkan
           </p>
         </div>
 

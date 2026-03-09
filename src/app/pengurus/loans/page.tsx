@@ -9,7 +9,7 @@ import {
   LOAN_TYPE_LABELS,
   LOAN_STATUS_LABELS,
 } from "@/lib/utils";
-import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save, Lock, ClipboardList } from "lucide-react";
+import { CreditCard, Wallet, TrendingUp, FileText, Loader2, ArrowRight, FileDown, PauseCircle, PlayCircle, Hash, Settings2, Save, Lock, ClipboardList, CheckCircle2, Clock, XCircle } from "lucide-react";
 import Link from "next/link";
 
 interface LoanQuota {
@@ -219,10 +219,24 @@ export default function PengurusLoansPage() {
     });
 
   const totalLoans = loans.length;
-  const activeLoans = loans.filter(
-    (l) => !["rejected", "draft"].includes(l.status)
-  ).length;
-  const totalAmount = loans.reduce(
+  const disbursedLoansList = loans.filter(
+    (l) => l.status === "disbursed" || l.status === "selesai"
+  );
+  const onProcessLoansList = loans.filter(
+    (l) => !["rejected", "draft", "disbursed", "selesai"].includes(l.status)
+  );
+  const rejectedLoansList = loans.filter(
+    (l) => l.status === "rejected"
+  );
+  const disbursedAmount = disbursedLoansList.reduce(
+    (sum, l) => sum + parseFloat(l.amount || "0"),
+    0
+  );
+  const onProcessAmount = onProcessLoansList.reduce(
+    (sum, l) => sum + parseFloat(l.amount || "0"),
+    0
+  );
+  const rejectedAmount = rejectedLoansList.reduce(
     (sum, l) => sum + parseFloat(l.amount || "0"),
     0
   );
@@ -270,7 +284,7 @@ export default function PengurusLoansPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -283,30 +297,43 @@ export default function PengurusLoansPage() {
           <p className="text-2xl font-bold text-gray-900">{totalLoans}</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border-l-4 border-green-400">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-teal-600" />
+            <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
             </div>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              Pinjaman Aktif
+              Dicairkan
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{activeLoans}</p>
+          <p className="text-2xl font-bold text-gray-900">{disbursedLoansList.length}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatCurrency(disbursedAmount)}</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border-l-4 border-amber-400">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-purple-600" />
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-amber-600" />
             </div>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-              Total Nilai Pinjaman
+              Dalam Proses
             </p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">
-            {formatCurrency(totalAmount)}
-          </p>
+          <p className="text-2xl font-bold text-gray-900">{onProcessLoansList.length}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatCurrency(onProcessAmount)}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 shadow-sm border-l-4 border-red-400">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+              <XCircle className="w-5 h-5 text-red-600" />
+            </div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Ditolak
+            </p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{rejectedLoansList.length}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatCurrency(rejectedAmount)}</p>
         </div>
       </div>
 

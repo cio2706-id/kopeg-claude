@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
-import { formatCurrency, calculateMonthlyInstallment, InterestMethod } from "@/lib/utils";
+import { formatCurrency, calculateMonthlyInstallment, InterestMethod, formatNumberInput, parseFormattedNumber } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -142,7 +142,8 @@ export default function LoanApplicationPage() {
   const [regulerAtasNama, setRegulerAtasNama] = useState("");
 
   // Khusus-specific
-  const [tempatTanggalLahir, setTempatTanggalLahir] = useState("");
+  const [tempatLahir, setTempatLahir] = useState("");
+  const [tanggalLahir, setTanggalLahir] = useState("");
   const [nomorKtp, setNomorKtp] = useState("");
   const [alamat, setAlamat] = useState("");
   const [telepon, setTelepon] = useState("");
@@ -280,7 +281,8 @@ export default function LoanApplicationPage() {
     }
     if (loanType === "khusus") {
       return {
-        tempatTanggalLahir,
+        tempatLahir,
+        tanggalLahir,
         nomorKtp,
         alamat,
         telepon,
@@ -721,9 +723,10 @@ export default function LoanApplicationPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Perkiraan Jumlah Pinjaman (Rp) - Opsional</label>
                 <input
-                  type="number"
-                  value={channelingAmount}
-                  onChange={(e) => setChannelingAmount(e.target.value)}
+                  type="text"
+                  inputMode="numeric"
+                  value={formatNumberInput(channelingAmount)}
+                  onChange={(e) => setChannelingAmount(parseFormattedNumber(e.target.value))}
                   className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none"
                   placeholder="Masukkan perkiraan jumlah"
                 />
@@ -934,12 +937,15 @@ export default function LoanApplicationPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Jumlah Pinjaman (Rp) *</label>
                   <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatNumberInput(amount)}
+                    onChange={(e) => {
+                      const raw = parseFormattedNumber(e.target.value);
+                      if (config.maxAmount && parseInt(raw || "0", 10) > config.maxAmount) return;
+                      setAmount(raw);
+                    }}
                     required
-                    min="100000"
-                    max={config.maxAmount || undefined}
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
                     placeholder={config.maxAmount ? `Maks ${formatCurrency(config.maxAmount)}` : "Masukkan jumlah"}
                   />
@@ -976,12 +982,13 @@ export default function LoanApplicationPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Penghasilan Bruto / Bulan (Rp) *</label>
               <input
-                type="number"
-                value={penghasilanBruto}
-                onChange={(e) => setPenghasilanBruto(e.target.value)}
+                type="text"
+                inputMode="numeric"
+                value={formatNumberInput(penghasilanBruto)}
+                onChange={(e) => setPenghasilanBruto(parseFormattedNumber(e.target.value))}
                 required
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none"
-                placeholder="Contoh: 15000000"
+                placeholder="Contoh: 15.000.000"
               />
               <p className="text-xs text-gray-400 mt-1">Gaji kotor per bulan sebelum potongan</p>
             </div>
@@ -1153,14 +1160,24 @@ export default function LoanApplicationPage() {
                 <h2 className="font-semibold text-gray-900">Data Pribadi Pemohon</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Tempat & Tanggal Lahir *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tempat Lahir *</label>
                     <input
                       type="text"
-                      value={tempatTanggalLahir}
-                      onChange={(e) => setTempatTanggalLahir(e.target.value)}
+                      value={tempatLahir}
+                      onChange={(e) => setTempatLahir(e.target.value)}
                       required
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
-                      placeholder="Jakarta, 01-01-1990"
+                      placeholder="Jakarta"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Lahir *</label>
+                    <input
+                      type="date"
+                      value={tanggalLahir}
+                      onChange={(e) => setTanggalLahir(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-all outline-none"
                     />
                   </div>
                   <div>

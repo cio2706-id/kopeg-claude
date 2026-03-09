@@ -250,7 +250,7 @@ function KhususForm({ loan, requester, fd, createdDate, ketuaName }: {
       <div className="section">
         <h3 className="section-title">DATA PRIBADI PEMOHON</h3>
         <div className="field-row"><span className="field-label">Nama Pemohon</span><span className="field-value">: {requester.fullName}</span></div>
-        <div className="field-row"><span className="field-label">Tempat & Tanggal Lahir</span><span className="field-value">: {String(fd.tempatTanggalLahir || "-")}</span></div>
+        <div className="field-row"><span className="field-label">Tempat & Tanggal Lahir</span><span className="field-value">: {fd.tempatLahir && fd.tanggalLahir ? `${String(fd.tempatLahir)}, ${new Date(String(fd.tanggalLahir)).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}` : String(fd.tempatTanggalLahir || "-")}</span></div>
         <div className="field-row"><span className="field-label">Nomor KTP</span><span className="field-value">: {String(fd.nomorKtp || "-")} (Copy KTP terlampir)</span></div>
         <div className="field-row"><span className="field-label">Alamat Rumah / Kode Pos</span><span className="field-value">: {String(fd.alamat || "-")}</span></div>
         <div className="field-row"><span className="field-label">Telepon / Handphone</span><span className="field-value">: {String(fd.telepon || "-")}</span></div>
