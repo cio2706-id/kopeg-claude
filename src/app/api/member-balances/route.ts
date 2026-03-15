@@ -153,6 +153,7 @@ export async function GET() {
         disbursedLoansCount: disbursedLoans.length,
         deductionRows: deductionRows.length,
       },
+      userDepartment: dbUser.department || "",
       simpanan: latestSavings ? {
         period: latestSavings.period,
         wajib: latestSavings.simpananWajib,

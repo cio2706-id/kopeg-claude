@@ -222,6 +222,10 @@ export default function LoanApplicationPage() {
         }
         saldoInstallment = data.pinjaman?.estimatedMonthlyInstallment || 0;
         source = data.pinjaman?.installmentSource || "estimated";
+        // Auto-fill unit kerja from user's department
+        if (data.userDepartment) {
+          setBarangUnitKerja(data.userDepartment);
+        }
       }
       if (loansRes.ok) {
         const loansData = await loansRes.json();
@@ -884,9 +888,9 @@ export default function LoanApplicationPage() {
                 key={key}
                 type="button"
                 onClick={() => handleSelectType(key)}
-                className={`p-6 rounded-2xl text-left transition-all border-2 border-gray-100 hover:${config.colors.border} hover:${config.colors.bg} group`}
+                className={`p-6 rounded-2xl text-left transition-all border-2 border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-white hover:shadow-md group`}
               >
-                <div className={`mb-3 text-gray-400 group-hover:${config.colors.icon}`}>
+                <div className={`mb-3 ${config.colors.icon}`}>
                   {config.icon}
                 </div>
                 <p className={`font-semibold text-gray-900 group-hover:${config.colors.text}`}>
@@ -1346,8 +1350,12 @@ export default function LoanApplicationPage() {
                     value={barangUnitKerja}
                     onChange={(e) => setBarangUnitKerja(e.target.value)}
                     required
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    readOnly={!!barangUnitKerja}
+                    className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-sm transition-all outline-none ${barangUnitKerja ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white"}`}
                   />
+                  {barangUnitKerja && (
+                    <p className="text-xs text-purple-600 mt-1">Otomatis dari data profil Anda</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Status Kepegawaian *</label>
@@ -1363,36 +1371,70 @@ export default function LoanApplicationPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Kebutuhan *</label>
-                  <input
-                    type="text"
-                    value={jenisKebutuhan}
-                    onChange={(e) => setJenisKebutuhan(e.target.value)}
-                    required
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
-                    placeholder="Laptop, Handphone, dll"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {loanType === "travel" ? "Jenis Layanan *" : loanType === "kepemilikan_kendaraan" ? "Jenis Kendaraan *" : "Jenis Kebutuhan *"}
+                  </label>
+                  {loanType === "travel" ? (
+                    <select
+                      value={jenisKebutuhan}
+                      onChange={(e) => setJenisKebutuhan(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    >
+                      <option value="">Pilih jenis layanan</option>
+                      <option value="Pesawat">Pesawat</option>
+                      <option value="Kereta">Kereta</option>
+                      <option value="Travel">Travel</option>
+                      <option value="Paket Liburan">Paket Liburan</option>
+                      <option value="Lain-lain">Lain-lain</option>
+                    </select>
+                  ) : loanType === "kepemilikan_kendaraan" ? (
+                    <select
+                      value={jenisKebutuhan}
+                      onChange={(e) => setJenisKebutuhan(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                    >
+                      <option value="">Pilih jenis kendaraan</option>
+                      <option value="Motor">Motor</option>
+                      <option value="Mobil">Mobil</option>
+                      <option value="Sepeda">Sepeda</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={jenisKebutuhan}
+                      onChange={(e) => setJenisKebutuhan(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
+                      placeholder="Laptop, Handphone, dll"
+                    />
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Merek *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {loanType === "travel" ? "Asal *" : loanType === "kepemilikan_kendaraan" ? "Merk Kendaraan *" : "Merek *"}
+                  </label>
                   <input
                     type="text"
                     value={merek}
                     onChange={(e) => setMerek(e.target.value)}
                     required
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
-                    placeholder="Apple, Lenovo, dll"
+                    placeholder={loanType === "travel" ? "Kota asal" : loanType === "kepemilikan_kendaraan" ? "Honda, Toyota, dll" : "Apple, Lenovo, dll"}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Tipe / Model *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {loanType === "travel" ? "Tujuan *" : loanType === "kepemilikan_kendaraan" ? "Model Kendaraan *" : "Tipe / Model *"}
+                  </label>
                   <input
                     type="text"
                     value={tipe}
                     onChange={(e) => setTipe(e.target.value)}
                     required
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-all outline-none"
-                    placeholder="Model / seri"
+                    placeholder={loanType === "travel" ? "Kota tujuan" : loanType === "kepemilikan_kendaraan" ? "Model / tipe kendaraan" : "Model / seri"}
                   />
                 </div>
                 <div>
