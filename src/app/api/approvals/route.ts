@@ -18,7 +18,7 @@ import {
   BANK_MANDIRI_COA,
   BANK_MANDIRI_KOPERASI_ACCOUNT,
 } from "@/lib/accurate";
-import { LOAN_STATUS_FLOW } from "@/lib/utils";
+import { LOAN_STATUS_FLOW, calculateMonthlyInstallment, InterestMethod } from "@/lib/utils";
 import { z } from "zod";
 
 const approvalSchema = z.object({
@@ -30,6 +30,8 @@ const approvalSchema = z.object({
   // PO manager price adjustment
   totalAmount: z.number().positive().optional(),
   adjustmentNotes: z.string().optional(),
+  // Loan manager price (for barang/travel/kendaraan)
+  loanAmount: z.number().positive().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -136,6 +138,22 @@ export async function POST(request: NextRequest) {
           .update(loans)
           .set({ status: "rejected", updatedAt: new Date() })
           .where(eq(loans.id, approval.referenceId));
+
+        // Mark all remaining pending approval steps as skipped (so they don't appear as pending)
+        await db
+          .update(approvals)
+          .set({
+            action: "reject",
+            comments: `Ditolak oleh ${dbUser.fullName || dbUser.email} pada step sebelumnya. Alasan: ${parsed.data.comments || "-"}`,
+            decidedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(approvals.referenceId, approval.referenceId),
+              eq(approvals.referenceType, "loan"),
+              isNull(approvals.action)
+            )
+          );
       } else if (parsed.data.action === "approve") {
         const [loan] = await db
           .select()
@@ -160,6 +178,37 @@ export async function POST(request: NextRequest) {
               .where(eq(loans.id, loan.id));
           }
 
+          // Manager step: update loan amount for item loans (barang/travel/kendaraan)
+          if (
+            dbUser.role === "manager" &&
+            parsed.data.loanAmount &&
+            ["barang", "travel", "kepemilikan_kendaraan"].includes(loan.loanType)
+          ) {
+            const newAmount = parsed.data.loanAmount;
+            const interestRate = parseFloat(loan.interestRate);
+            const interestMethod = (loan.interestMethod as InterestMethod) || "flat";
+            const newInstallment = calculateMonthlyInstallment(
+              newAmount,
+              interestRate,
+              loan.tenorMonths,
+              interestMethod
+            );
+
+            await db
+              .update(loans)
+              .set({
+                amount: newAmount.toString(),
+                monthlyInstallment: Math.round(newInstallment).toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(loans.id, loan.id));
+          }
+
+          // Use the updated amount (if manager changed it) for quota check
+          const effectiveAmount = parsed.data.loanAmount
+            ? parsed.data.loanAmount.toString()
+            : loan.amount;
+
           const nextStatus = LOAN_STATUS_FLOW[loan.status] || loan.status;
 
           // ── Quota check before final approval (auto-hold if exceeded) ──
@@ -169,7 +218,7 @@ export async function POST(request: NextRequest) {
               khusus: 70_000_000,
             };
 
-            const loanAmount = parseFloat(loan.amount);
+            const loanAmount = parseFloat(effectiveAmount);
             const loanType = loan.loanType;
 
             // Get current used amounts for this period
@@ -281,7 +330,7 @@ export async function POST(request: NextRequest) {
 
           // Update used_amount in quota when loan gets final approval
           if (nextStatus === "approved" && loan.queuePeriod) {
-            const loanAmount = parseFloat(loan.amount);
+            const loanAmount = parseFloat(effectiveAmount);
             const existingQuota = await db
               .select()
               .from(loanQuotas)
@@ -327,14 +376,14 @@ export async function POST(request: NextRequest) {
               detailList: [
                 {
                   accountNo: coaCode,
-                  debit: parseFloat(loan.amount),
+                  debit: parseFloat(effectiveAmount),
                   credit: 0,
                   description: `Piutang Pinjaman ${loan.loanType} - ${employeeName}`,
                 },
                 {
                   accountNo: BANK_MANDIRI_COA,
                   debit: 0,
-                  credit: parseFloat(loan.amount),
+                  credit: parseFloat(effectiveAmount),
                   description: `Bank Mandiri Koperasi (${BANK_MANDIRI_KOPERASI_ACCOUNT}) - Pencairan ${employeeName}`,
                 },
               ],
@@ -363,6 +412,22 @@ export async function POST(request: NextRequest) {
           .update(purchaseOrders)
           .set({ status: "rejected", updatedAt: new Date() })
           .where(eq(purchaseOrders.id, approval.referenceId));
+
+        // Mark all remaining pending approval steps as rejected
+        await db
+          .update(approvals)
+          .set({
+            action: "reject",
+            comments: `Ditolak oleh ${dbUser.fullName || dbUser.email} pada step sebelumnya. Alasan: ${parsed.data.comments || "-"}`,
+            decidedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(approvals.referenceId, approval.referenceId),
+              eq(approvals.referenceType, "purchase_order"),
+              isNull(approvals.action)
+            )
+          );
       } else if (parsed.data.action === "approve") {
         const [po] = await db
           .select()
@@ -408,6 +473,22 @@ export async function POST(request: NextRequest) {
           .update(paymentRequests)
           .set({ status: "rejected", updatedAt: new Date() })
           .where(eq(paymentRequests.id, approval.referenceId));
+
+        // Mark all remaining pending approval steps as rejected
+        await db
+          .update(approvals)
+          .set({
+            action: "reject",
+            comments: `Ditolak oleh ${dbUser.fullName || dbUser.email} pada step sebelumnya. Alasan: ${parsed.data.comments || "-"}`,
+            decidedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(approvals.referenceId, approval.referenceId),
+              eq(approvals.referenceType, "payment_request"),
+              isNull(approvals.action)
+            )
+          );
       } else if (parsed.data.action === "approve") {
         const allApprovals = await db
           .select()

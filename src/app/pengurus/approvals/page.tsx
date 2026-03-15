@@ -131,6 +131,7 @@ export default function PengurusApprovalsPage() {
   const [holdReason, setHoldReason] = useState("");
   const [managerNewPrice, setManagerNewPrice] = useState<Record<string, string>>({});
   const [managerPriceNotes, setManagerPriceNotes] = useState<Record<string, string>>({});
+  const [managerLoanPrice, setManagerLoanPrice] = useState<Record<string, string>>({});
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -247,12 +248,13 @@ export default function PengurusApprovalsPage() {
     router.push("/pengurus/login");
   }
 
-  async function handleApprove(approvalId: string, extra?: { totalAmount?: number; adjustmentNotes?: string }) {
+  async function handleApprove(approvalId: string, extra?: { totalAmount?: number; adjustmentNotes?: string; loanAmount?: number }) {
     setActionLoading(approvalId);
     try {
       const body: Record<string, unknown> = { approvalId, action: "approve" };
       if (extra?.totalAmount) body.totalAmount = extra.totalAmount;
       if (extra?.adjustmentNotes) body.adjustmentNotes = extra.adjustmentNotes;
+      if (extra?.loanAmount) body.loanAmount = extra.loanAmount;
 
       const res = await fetch("/api/approvals", {
         method: "POST",
@@ -714,6 +716,37 @@ export default function PengurusApprovalsPage() {
         {/* Approval Timeline */}
         {approvalSteps.length > 0 && renderApprovalTimeline(approvalSteps)}
 
+        {/* Manager Price Input for Item Loans (barang/travel/kendaraan) */}
+        {canAct && userDbRole === "manager" && ["barang", "travel", "kepemilikan_kendaraan"].includes(loan.loanType) && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Edit3 className="w-3.5 h-3.5" />
+              Tentukan Harga Pinjaman
+            </h4>
+            <div className="bg-blue-50 rounded-xl p-4 space-y-3">
+              <p className="text-xs text-blue-700">
+                Masukkan jumlah pinjaman yang disetujui. Angsuran akan dihitung ulang otomatis.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Jumlah Pinjaman (Rp) *</label>
+                <input
+                  type="number"
+                  value={managerLoanPrice[approval.id] || ""}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setManagerLoanPrice((prev) => ({ ...prev, [approval.id]: e.target.value }));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder={Number(loan.amount).toString()}
+                  min="0"
+                  className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none bg-white"
+                />
+                <p className="text-xs text-gray-400 mt-1">Harga saat ini: {formatCurrency(Number(loan.amount))}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="mt-5 pt-5 border-t border-gray-100">
           {canAct ? (
@@ -723,7 +756,16 @@ export default function PengurusApprovalsPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleApprove(approval.id);
+                      const isItemLoan = ["barang", "travel", "kepemilikan_kendaraan"].includes(loan.loanType);
+                      const isManagerStep = userDbRole === "manager";
+                      const loanPrice = managerLoanPrice[approval.id] ? parseFloat(managerLoanPrice[approval.id]) : undefined;
+
+                      if (isItemLoan && isManagerStep && !loanPrice) {
+                        alert("Silahkan masukkan jumlah pinjaman yang disetujui terlebih dahulu.");
+                        return;
+                      }
+
+                      handleApprove(approval.id, isItemLoan && isManagerStep && loanPrice ? { loanAmount: loanPrice } : undefined);
                     }}
                     disabled={actionLoading === approval.id}
                     className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
