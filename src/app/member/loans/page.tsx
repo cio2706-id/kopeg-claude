@@ -550,60 +550,95 @@ export default function LoansPage() {
                 );
               })}
 
-                  {/* Existing balances for this type */}
-                  {typeExist.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {typeExist.map((bal) => {
-                        const saldo = parseFloat(bal.saldo || "0");
-                        const installment = bal.monthlyInstallment ? parseFloat(bal.monthlyInstallment) : null;
+                  {/* Existing balances (kertas kerja) for this type - same style as disbursed */}
+                  {typeExist.map((bal) => {
+                    const saldo = parseFloat(bal.saldo || "0");
+                    const installment = bal.monthlyInstallment ? parseFloat(bal.monthlyInstallment) : null;
+                    const isExpanded = expandedId === `existing-${bal.id}`;
 
-                        return (
-                          <div key={bal.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 border-blue-400">
-                            <div className="px-5 py-4">
-                              <div className="flex items-start gap-3 mb-3">
-                                <div className="flex-1 min-w-0">
-                                  <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200 mb-1">
-                                    Data Kertas Kerja
-                                  </span>
-                                  <p className="text-[11px] text-gray-400">Periode: {bal.period}</p>
+                    return (
+                      <div key={`existing-${bal.id}`} className="bg-white rounded-2xl shadow-sm overflow-hidden border-l-4 border-green-400">
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : `existing-${bal.id}`)}
+                          className="w-full text-left px-6 py-4 flex items-center gap-4 hover:bg-gray-50 transition"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                Data Kertas Kerja
+                              </span>
+                              <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap bg-green-100 text-green-700">
+                                Aktif
+                              </span>
+                            </div>
+                            <p className="font-semibold text-gray-900 text-sm">
+                              {EXISTING_LOAN_TYPE_LABELS[bal.loanType] || LOAN_TYPE_LABELS[bal.loanType] || bal.loanType}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Periode: {bal.period}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold text-gray-900">{formatCurrency(saldo)}</p>
+                            {installment && installment > 0 && (
+                              <p className="text-xs text-gray-500">
+                                {formatCurrency(installment)}/bln
+                              </p>
+                            )}
+                          </div>
+                          {isExpanded ? (
+                            <ChevronUp className="w-5 h-5 text-gray-400 shrink-0" />
+                          ) : (
+                            <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />
+                          )}
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-6 pb-5 border-t border-gray-100 pt-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+                              <div className="flex items-start gap-2">
+                                <Banknote className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-[11px] text-gray-400">Saldo Pinjaman</p>
+                                  <p className="text-sm font-semibold text-gray-900">{formatCurrency(saldo)}</p>
                                 </div>
                               </div>
-
-                              <div className="space-y-2 mb-4">
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-gray-500">Saldo Pinjaman</span>
-                                  <span className="font-bold text-gray-900">{formatCurrency(saldo)}</span>
-                                </div>
-                                {installment && installment > 0 && (
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-gray-500">Angsuran/Bulan</span>
-                                    <span className="font-semibold text-gray-700">{formatCurrency(installment)}</span>
+                              {installment && installment > 0 && (
+                                <div className="flex items-start gap-2">
+                                  <Receipt className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                                  <div>
+                                    <p className="text-[11px] text-gray-400">Angsuran + Bunga / Bulan</p>
+                                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(installment)}</p>
                                   </div>
-                                )}
-                              </div>
-
-                              <div className="flex gap-2">
-                                <Link
-                                  href={`/member/loans/existing/${bal.id}/kartu`}
-                                  className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-blue-100 transition border border-blue-200 flex-1 justify-center"
-                                >
-                                  <ClipboardList className="w-3.5 h-3.5" />
-                                  Kartu Pinjaman
-                                </Link>
-                                <Link
-                                  href={`/member/loans/existing/${bal.id}/kartu`}
-                                  target="_blank"
-                                  className="inline-flex items-center gap-1.5 bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-100 transition border border-gray-200"
-                                >
-                                  <FileDown className="w-3.5 h-3.5" />
-                                </Link>
+                                </div>
+                              )}
+                              <div className="flex items-start gap-2">
+                                <Calendar className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-[11px] text-gray-400">Periode Data</p>
+                                  <p className="text-sm font-semibold text-gray-900">{bal.period}</p>
+                                </div>
                               </div>
                             </div>
+                            <div className="bg-blue-50 rounded-xl p-3 mb-4">
+                              <p className="text-xs text-blue-700">
+                                Data ini berasal dari kertas kerja (data impor). Angsuran yang ditampilkan adalah angsuran + bunga sesuai Potongan Bulanan.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Link
+                                href={`/member/loans/existing/${bal.id}/kartu`}
+                                className="inline-flex items-center gap-1.5 bg-teal-50 text-teal-700 px-4 py-2 rounded-lg text-xs font-medium hover:bg-teal-100 transition border border-teal-200"
+                              >
+                                <ClipboardList className="w-3.5 h-3.5" />
+                                Kartu Pinjaman
+                              </Link>
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             });

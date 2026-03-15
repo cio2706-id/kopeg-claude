@@ -45,8 +45,7 @@ export async function GET(
       .from(users)
       .where(eq(users.id, loan.userId));
 
-    // 3. Fetch the requester's OTHER active loans
-    //    (status NOT in rejected/draft, excluding the current loan)
+    // 3. Fetch the requester's OTHER active loans (only disbursed/selesai = truly active)
     const activeLoans = await db
       .select()
       .from(loans)
@@ -54,7 +53,7 @@ export async function GET(
         and(
           eq(loans.userId, loan.userId),
           ne(loans.id, id),
-          notInArray(loans.status, ["rejected", "draft"])
+          sql`${loans.status} IN ('disbursed', 'selesai')`
         )
       );
 

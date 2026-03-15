@@ -486,6 +486,9 @@ export default function PengurusApprovalsPage() {
       0
     );
 
+    // Combined total saldo (imported + active disbursed loans)
+    const totalSaldoPinjaman = importedBalanceTotal + activeLoansTotal;
+
     // Total existing monthly installment (active app loans + estimated saldo loans)
     const totalExistingInstallment = activeLoansMonthlyTotal + (estimatedSaldoInstallment || 0);
     // Include the new loan request installment
@@ -612,24 +615,34 @@ export default function PengurusApprovalsPage() {
               </span>
             </div>
             <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-              <span className="text-xs text-gray-500">
-                Saldo Pinjaman (Data Impor)
+              <span className="text-xs font-semibold text-gray-700">
+                Total Saldo Pinjaman
               </span>
-              <span className="text-xs font-medium text-gray-900">
-                {importedBalanceTotal > 0
-                  ? formatCurrency(importedBalanceTotal)
+              <span className="text-xs font-bold text-gray-900">
+                {totalSaldoPinjaman > 0
+                  ? formatCurrency(totalSaldoPinjaman)
                   : "Tidak ada data"}
               </span>
             </div>
-            {importedBalances && importedBalances.length > 0 && (
+            {(importedBalanceTotal > 0 || activeLoans.length > 0) && (
               <div className="pl-3 space-y-1">
-                {importedBalances.filter(lb => parseFloat(lb.saldo || "0") > 0).map((lb, idx) => (
+                {importedBalances && importedBalances.filter(lb => parseFloat(lb.saldo || "0") > 0).map((lb, idx) => (
                   <div key={idx} className="flex justify-between">
                     <span className="text-[11px] text-gray-400 capitalize">
-                      {lb.loanType.replace(/_/g, " ")}
+                      {lb.loanType.replace(/_/g, " ")} (kertas kerja)
                     </span>
                     <span className="text-[11px] text-gray-500">
                       {formatCurrency(parseFloat(lb.saldo || "0"))}
+                    </span>
+                  </div>
+                ))}
+                {activeLoans.map((al, idx) => (
+                  <div key={`al-${idx}`} className="flex justify-between">
+                    <span className="text-[11px] text-gray-400 capitalize">
+                      {(LOAN_TYPE_LABELS[al.loanType] || al.loanType)} (dicairkan)
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      {formatCurrency(parseFloat(al.amount))}
                     </span>
                   </div>
                 ))}
@@ -637,15 +650,10 @@ export default function PengurusApprovalsPage() {
             )}
             <div className="flex justify-between">
               <span className="text-xs text-gray-500">
-                Pinjaman aktif (app)
+                Pinjaman Aktif (dicairkan)
               </span>
               <span className="text-xs font-medium text-gray-900">
                 {activeLoans.length} pinjaman
-                {activeLoans.length > 0 && (
-                  <span className="text-gray-400 ml-1">
-                    ({formatCurrency(activeLoansTotal)})
-                  </span>
-                )}
               </span>
             </div>
             <div className="flex justify-between">
@@ -660,19 +668,13 @@ export default function PengurusApprovalsPage() {
             {/* Estimated Installment & 40% Check */}
             <div className="border-t border-gray-200 pt-2 mt-2 space-y-1.5">
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Analisa Cicilan (40% Pendapatan)</p>
-              {(estimatedSaldoInstallment || 0) > 0 && (
+              {totalExistingInstallment > 0 && (
                 <div className="flex justify-between">
                   <span className="text-xs text-gray-500">
-                    Cicilan saldo impor
+                    Cicilan pinjaman existing
                     {installmentSource === "potongan" ? " (potongan gaji)" : installmentSource === "excel_angsuran" ? " (angsuran Excel)" : " (est.)"}
                   </span>
-                  <span className="text-xs font-medium text-gray-900">{formatCurrency(estimatedSaldoInstallment || 0)}/bln</span>
-                </div>
-              )}
-              {activeLoansMonthlyTotal > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-xs text-gray-500">Cicilan pinjaman aktif (app)</span>
-                  <span className="text-xs font-medium text-gray-900">{formatCurrency(activeLoansMonthlyTotal)}/bln</span>
+                  <span className="text-xs font-medium text-gray-900">{formatCurrency(totalExistingInstallment)}/bln</span>
                 </div>
               )}
               <div className="flex justify-between">
