@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Wallet,
@@ -22,6 +22,8 @@ import {
   Building2,
   Mail,
   UserCircle,
+  Clock,
+  ChevronRight,
 } from "lucide-react";
 
 interface NavItem {
@@ -29,7 +31,16 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   section?: string;
-  badgeKey?: string; // key to look up in notification counts
+  badgeKey?: string;
+}
+
+interface NotificationItem {
+  id: string;
+  type: "approval" | "spp_create" | "spp_approval" | "po_task";
+  title: string;
+  description: string;
+  href: string;
+  createdAt: string;
 }
 
 const memberNav: NavItem[] = [
@@ -63,6 +74,50 @@ interface DashboardLayoutProps {
   onLogout?: () => void;
 }
 
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "Baru saja";
+  if (diffMin < 60) return `${diffMin} menit lalu`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} jam lalu`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 7) return `${diffDay} hari lalu`;
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+function getNotifIcon(type: NotificationItem["type"]) {
+  switch (type) {
+    case "approval":
+      return <CheckSquare className="w-4 h-4 text-blue-500" />;
+    case "spp_create":
+      return <FileText className="w-4 h-4 text-orange-500" />;
+    case "spp_approval":
+      return <FileText className="w-4 h-4 text-purple-500" />;
+    case "po_task":
+      return <ShoppingCart className="w-4 h-4 text-teal-500" />;
+    default:
+      return <Bell className="w-4 h-4 text-gray-500" />;
+  }
+}
+
+function getNotifBgColor(type: NotificationItem["type"]) {
+  switch (type) {
+    case "approval":
+      return "bg-blue-50";
+    case "spp_create":
+      return "bg-orange-50";
+    case "spp_approval":
+      return "bg-purple-50";
+    case "po_task":
+      return "bg-teal-50";
+    default:
+      return "bg-gray-50";
+  }
+}
+
 export default function DashboardLayout({
   children,
   variant = "member",
@@ -72,7 +127,11 @@ export default function DashboardLayout({
 }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [badges, setBadges] = useState<Record<string, number>>({});
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [bellOpen, setBellOpen] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const router = useRouter();
   const navItems = variant === "pengurus" ? pengurusNav : memberNav;
 
   // Fetch notification counts for pengurus
@@ -85,16 +144,31 @@ export default function DashboardLayout({
         if (res.ok && !cancelled) {
           const data = await res.json();
           setBadges(data);
+          setNotifications(data.notifications || []);
         }
       } catch {
         // Silently ignore
       }
     }
     fetchNotifications();
-    // Refresh every 30 seconds
     const interval = setInterval(fetchNotifications, 30000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [variant]);
+
+  // Close bell dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setBellOpen(false);
+      }
+    }
+    if (bellOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [bellOpen]);
+
+  const totalNotifications = badges.totalNotifications || 0;
 
   return (
     <div className="min-h-screen bg-[#f0f0f0]">
@@ -127,6 +201,7 @@ export default function DashboardLayout({
         <nav className="flex-1 px-4 overflow-y-auto">
           {navItems.map((item, index) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const badgeCount = item.badgeKey ? (badges[item.badgeKey] || 0) : 0;
             return (
               <div key={item.href}>
                 {item.section && (
@@ -145,13 +220,13 @@ export default function DashboardLayout({
                 >
                   {item.icon}
                   <span className="flex-1">{item.label}</span>
-                  {item.badgeKey && badges[item.badgeKey] > 0 && (
+                  {badgeCount > 0 && (
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${
                       isActive
                         ? "bg-white/25 text-white"
-                        : "bg-teal-500 text-white"
+                        : "bg-red-500 text-white"
                     }`}>
-                      {badges[item.badgeKey]}
+                      {badgeCount}
                     </span>
                   )}
                 </Link>
@@ -204,14 +279,86 @@ export default function DashboardLayout({
               <button className="p-2 rounded-lg hover:bg-gray-100 transition relative">
                 <Mail className="w-5 h-5 text-gray-500" />
               </button>
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition relative">
-                <Bell className="w-5 h-5 text-gray-500" />
-                {(badges.pendingApprovals > 0 || badges.totalSpp > 0) && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white">
-                    {(badges.pendingApprovals || 0) + (badges.totalSpp || 0)}
-                  </span>
+
+              {/* Bell Notification Button with Dropdown */}
+              <div ref={bellRef} className="relative">
+                <button
+                  onClick={() => setBellOpen(!bellOpen)}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition relative"
+                >
+                  <Bell className="w-5 h-5 text-gray-500" />
+                  {totalNotifications > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white">
+                      {totalNotifications > 99 ? "99+" : totalNotifications}
+                    </span>
+                  )}
+                </button>
+
+                {/* Dropdown */}
+                {bellOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-[380px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50">
+                    {/* Header */}
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900 text-sm">Notifikasi</h3>
+                      {totalNotifications > 0 && (
+                        <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
+                          {totalNotifications} tugas
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Notification List */}
+                    <div className="max-h-[400px] overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="px-4 py-8 text-center">
+                          <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                          <p className="text-sm text-gray-400">Tidak ada notifikasi</p>
+                        </div>
+                      ) : (
+                        notifications.map((notif) => (
+                          <button
+                            key={notif.id}
+                            onClick={() => {
+                              setBellOpen(false);
+                              router.push(notif.href);
+                            }}
+                            className="w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition text-left border-b border-gray-50 last:border-b-0"
+                          >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${getNotifBgColor(notif.type)}`}>
+                              {getNotifIcon(notif.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{notif.title}</p>
+                              <p className="text-xs text-gray-500 truncate mt-0.5">{notif.description}</p>
+                              <div className="flex items-center gap-1 mt-1">
+                                <Clock className="w-3 h-3 text-gray-300" />
+                                <span className="text-[10px] text-gray-400">{timeAgo(notif.createdAt)}</span>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    {notifications.length > 0 && (
+                      <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50">
+                        <button
+                          onClick={() => {
+                            setBellOpen(false);
+                            router.push("/pengurus/dashboard");
+                          }}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-medium w-full text-center"
+                        >
+                          Lihat semua di Dashboard
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
+
               <div className="flex items-center gap-2.5 ml-2">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-bold text-sm">
                   {userName.charAt(0).toUpperCase()}
