@@ -18,8 +18,6 @@ import {
   ShoppingCart,
   Wallet,
   TrendingUp,
-  Check,
-  X,
   AlertCircle,
   ChevronRight,
   FileText,
@@ -97,7 +95,6 @@ export default function PengurusDashboardPage() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activityTab, setActivityTab] = useState<ActivityTab>("all");
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
@@ -161,25 +158,6 @@ export default function PengurusDashboardPage() {
     init();
   }, [router, supabase, loadData]);
 
-  async function handleApproval(
-    approvalId: string,
-    action: "approve" | "reject",
-    comments?: string
-  ) {
-    setActionLoading(approvalId);
-    try {
-      const res = await fetch("/api/approvals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalId, action, comments }),
-      });
-      if (res.ok) loadData();
-    } catch (error) {
-      console.error("Approval failed:", error);
-    } finally {
-      setActionLoading(null);
-    }
-  }
 
   async function handleUploadSavings(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -546,29 +524,14 @@ export default function PengurusDashboardPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-                    <button
-                      onClick={() => handleApproval(approval.id, "approve")}
-                      disabled={actionLoading === approval.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition disabled:opacity-50"
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <Link
+                      href="/pengurus/approvals"
+                      className="w-full flex items-center justify-center gap-1.5 bg-teal-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-teal-600 transition"
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      Setujui
-                    </button>
-                    <button
-                      onClick={() =>
-                        handleApproval(
-                          approval.id,
-                          "reject",
-                          "Ditolak oleh pengurus"
-                        )
-                      }
-                      disabled={actionLoading === approval.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-white text-red-600 border border-red-200 px-3 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Tolak
-                    </button>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      Lihat Detail
+                    </Link>
                   </div>
                 </div>
               );
