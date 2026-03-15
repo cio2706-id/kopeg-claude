@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
     } else if (sppData.referenceType === "purchase_order" && sppData.referenceId) {
       await db
         .update(purchaseOrders)
-        .set({ sppId: newSpp.id, sppRef: sppNumber, updatedAt: new Date() })
+        .set({ sppId: newSpp.id, sppRef: sppNumber, status: "spp_process", updatedAt: new Date() })
         .where(eq(purchaseOrders.id, sppData.referenceId));
     }
 

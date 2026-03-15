@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { loans, purchaseOrders, users } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { eq, isNull, inArray } from "drizzle-orm";
+import { eq, isNull, inArray, and } from "drizzle-orm";
 
 /**
  * GET: Fetch loans and POs that are ready for SPP creation.
@@ -54,10 +54,16 @@ export async function GET() {
         requesterName: purchaseOrders.requesterName,
         requesterDivisi: purchaseOrders.requesterDivisi,
         vendorName: purchaseOrders.vendorName,
+        sppId: purchaseOrders.sppId,
         createdAt: purchaseOrders.createdAt,
       })
       .from(purchaseOrders)
-      .where(eq(purchaseOrders.status, "approved_rab"));
+      .where(
+        and(
+          eq(purchaseOrders.status, "approved_rab"),
+          isNull(purchaseOrders.sppId)
+        )
+      );
 
     return NextResponse.json({
       loans: loansWithoutSpp,

@@ -38,6 +38,8 @@ interface PurchaseOrder {
   invoiceNumber?: string;
   taxInvoiceNumber?: string;
   paymentRef?: string;
+  sppId?: string | null;
+  sppRef?: string | null;
   createdAt: string;
 }
 
@@ -612,6 +614,14 @@ export default function PengurusPOPage() {
                                 return <span className="text-[10px] text-gray-400 italic">Menunggu {ROLE_DISPLAY[action.requiredRole] || action.requiredRole}</span>;
                               }
                               if (action.needsInput === "spp") {
+                                // If SPP already created, show info instead of button
+                                if (po.sppId) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-teal-50 text-teal-600 rounded-lg font-medium">
+                                      <FileText className="w-3 h-3" /> SPP Dibuat {po.sppRef ? `(${po.sppRef})` : ""}
+                                    </span>
+                                  );
+                                }
                                 return (
                                   <button
                                     onClick={() => router.push(`/pengurus/spp/create?type=purchase_order&ref=${po.id}`)}
