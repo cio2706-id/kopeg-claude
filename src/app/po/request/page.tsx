@@ -374,9 +374,9 @@ export default function PoRequestPage() {
 
           {/* Document Upload */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Opsional)</h2>
+            <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung *</h2>
             <p className="text-xs text-gray-500 mb-3">
-              Upload dokumen pendukung seperti spesifikasi barang, penawaran harga, atau dokumen lainnya (PDF, maks 5MB).
+              Upload dokumen pendukung dan bukti persetujuan harga (email, eoffice, WA, dll). Format PDF, maks 5MB.
             </p>
             <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
               <Upload className="w-5 h-5 text-gray-400" />
@@ -427,7 +427,7 @@ export default function PoRequestPage() {
 
           <button
             type="submit"
-            disabled={loading || !description.trim() || !requesterName.trim() || !requesterDivisi.trim() || !requesterNip.trim()}
+            disabled={loading || !description.trim() || !requesterName.trim() || !requesterDivisi.trim() || !requesterNip.trim() || !documentFile}
             className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
           >
             {loading ? (

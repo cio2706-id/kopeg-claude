@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // List all POs (for pengurus)
+    // List POs
     const supabase = await createSupabaseServerClient();
     const {
       data: { user },
@@ -159,6 +159,17 @@ export async function GET(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // ?my=true: return only the current user's POs (for member tracking)
+    const myOnly = searchParams.get("my") === "true";
+    if (myOnly) {
+      const dbUser = await getOrCreateUser(user);
+      const myPOs = await db
+        .select()
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.userId, dbUser.id));
+      return NextResponse.json({ purchaseOrders: myPOs });
     }
 
     const allPOs = await db.select().from(purchaseOrders);
