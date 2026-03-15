@@ -69,55 +69,98 @@ export async function GET(
       .from(users)
       .where(eq(users.id, loanBalance.userId));
 
-    // Fetch monthly deductions for this user
-    const deductionRows = await db
-      .select({
-        period: monthlyDeductions.period,
-        totalPinjaman: sql<string>`sum(${monthlyDeductions.pinjamanAmount})`,
-      })
-      .from(monthlyDeductions)
-      .where(eq(monthlyDeductions.userId, loanBalance.userId))
-      .groupBy(monthlyDeductions.period)
-      .orderBy(sql`${monthlyDeductions.period} DESC`)
-      .limit(1);
-
     const saldo = parseFloat(loanBalance.saldo || "0");
     const baseType = loanBalance.loanType.startsWith("channeling") ? "channeling" : loanBalance.loanType;
     const interestRate = INTEREST_RATES[loanBalance.loanType] ?? INTEREST_RATES[baseType] ?? 0;
     const estimatedTenor = ESTIMATED_TENOR[loanBalance.loanType] ?? ESTIMATED_TENOR[baseType] ?? 10;
 
-    // Determine monthly installment
+    // Determine monthly installment for this specific loan
+    // Priority:
+    // 1. Per-loan monthlyInstallment from kertas kerja Excel (Angsuran/bulan column)
+    //    This is per-loan and includes angsuran pokok + bunga
+    // 2. Proportion from total potongan gaji (if multiple loans, divide proportionally)
+    // 3. Estimated from saldo / tenor (fallback)
     let monthlyInstallment = 0;
     let installmentSource = "estimated";
 
-    if (deductionRows.length > 0) {
-      const potongan = parseFloat(deductionRows[0].totalPinjaman || "0");
-      if (potongan > 0) {
-        monthlyInstallment = potongan;
-        installmentSource = "potongan";
+    // Priority 1: Use per-loan installment from kertas kerja Excel
+    if (loanBalance.monthlyInstallment) {
+      monthlyInstallment = parseFloat(loanBalance.monthlyInstallment);
+      if (monthlyInstallment > 0) {
+        installmentSource = "excel_angsuran";
       }
     }
 
-    if (monthlyInstallment === 0 && loanBalance.monthlyInstallment) {
-      monthlyInstallment = parseFloat(loanBalance.monthlyInstallment);
-      installmentSource = "excel_angsuran";
+    // Priority 2: If no per-loan data, try to proportion from total potongan
+    if (monthlyInstallment === 0) {
+      // Get all loan balances for this user to calculate proportion
+      const allUserBalances = await db
+        .select({
+          id: loanBalances.id,
+          saldo: loanBalances.saldo,
+          monthlyInstallment: loanBalances.monthlyInstallment,
+        })
+        .from(loanBalances)
+        .where(eq(loanBalances.userId, loanBalance.userId));
+
+      const totalSaldo = allUserBalances.reduce((s, lb) => s + parseFloat(lb.saldo || "0"), 0);
+      const thisLoanProportion = totalSaldo > 0 ? saldo / totalSaldo : 0;
+
+      const deductionRows = await db
+        .select({
+          period: monthlyDeductions.period,
+          totalPinjaman: sql<string>`sum(${monthlyDeductions.pinjamanAmount})`,
+        })
+        .from(monthlyDeductions)
+        .where(eq(monthlyDeductions.userId, loanBalance.userId))
+        .groupBy(monthlyDeductions.period)
+        .orderBy(sql`${monthlyDeductions.period} DESC`)
+        .limit(1);
+
+      if (deductionRows.length > 0) {
+        const totalPotongan = parseFloat(deductionRows[0].totalPinjaman || "0");
+        if (totalPotongan > 0 && thisLoanProportion > 0) {
+          monthlyInstallment = Math.round(totalPotongan * thisLoanProportion);
+          installmentSource = "potongan";
+        }
+      }
     }
 
+    // Priority 3: Estimate from saldo / tenor
     if (monthlyInstallment === 0 && saldo > 0) {
       monthlyInstallment = Math.ceil(saldo / estimatedTenor);
       installmentSource = "estimated";
     }
 
-    // Generate installment schedule from current saldo
-    const remainingMonths = monthlyInstallment > 0
-      ? Math.ceil(saldo / monthlyInstallment)
-      : estimatedTenor;
+    // Calculate remaining tenor by simulating amortization
+    // monthlyInstallment = angsuran pokok + bunga
+    // Each month: interest = remaining * rate/12, principal = installment - interest
+    const monthlyInterestRate = interestRate / 100 / 12;
+    let simRemaining = saldo;
+    let remainingMonths = 0;
+    const maxMonths = 120; // safety cap
 
+    if (monthlyInstallment > 0) {
+      for (let i = 0; i < maxMonths && simRemaining > 0.5; i++) {
+        const interest = simRemaining * monthlyInterestRate;
+        const principal = monthlyInstallment - interest;
+        if (principal <= 0) {
+          // Installment doesn't cover interest - use tenor estimate
+          remainingMonths = estimatedTenor;
+          break;
+        }
+        simRemaining -= principal;
+        remainingMonths++;
+      }
+    } else {
+      remainingMonths = estimatedTenor;
+    }
+
+    // Generate installment schedule
     const installments = [];
     let remaining = saldo;
-    const monthlyInterestRate = interestRate / 100 / 12;
 
-    for (let i = 1; i <= remainingMonths && remaining > 0; i++) {
+    for (let i = 1; i <= remainingMonths && remaining > 0.5; i++) {
       const interestAmount = Math.round(remaining * monthlyInterestRate);
       const principalAmount = Math.min(
         Math.round(monthlyInstallment > interestAmount ? monthlyInstallment - interestAmount : monthlyInstallment),

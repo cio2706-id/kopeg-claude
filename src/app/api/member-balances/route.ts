@@ -84,6 +84,9 @@ export async function GET() {
       reguler: 10,
       khusus: 24,
       barang: 10,
+      travel: 12,
+      kepemilikan_kendaraan: 36,
+      channeling: 60,
     };
 
     for (const lb of loanBals) {
@@ -133,15 +136,44 @@ export async function GET() {
       : (loanBalanceInstallment > 0 ? loanBalanceInstallment : estimatedInstallment);
 
     // Build detailed loan balances list for loans page
+    // For each loan, compute per-loan installment:
+    // 1. Use kertas kerja angsuran/bulan if available (per-loan, includes bunga)
+    // 2. Proportionally allocate from potongan gaji if available
+    // 3. Estimate from saldo / tenor as fallback
+    const totalImportedSaldo = loanBals.reduce((s, lb) => s + parseFloat(lb.saldo || "0"), 0);
+
     const loanBalanceDetails = loanBals
       .filter((lb) => parseFloat(lb.saldo || "0") > 0)
-      .map((lb) => ({
-        id: lb.id,
-        loanType: lb.loanType,
-        period: lb.period,
-        saldo: lb.saldo,
-        monthlyInstallment: lb.monthlyInstallment,
-      }));
+      .map((lb) => {
+        const lbSaldo = parseFloat(lb.saldo || "0");
+        let perLoanInstallment: string | null = null;
+
+        // Priority 1: Per-loan from kertas kerja Excel
+        if (lb.monthlyInstallment && parseFloat(lb.monthlyInstallment) > 0) {
+          perLoanInstallment = lb.monthlyInstallment;
+        }
+        // Priority 2: Proportion from total potongan
+        else if (actualMonthlyDeduction > 0 && totalImportedSaldo > 0) {
+          const proportion = lbSaldo / totalImportedSaldo;
+          perLoanInstallment = Math.round(actualMonthlyDeduction * proportion).toString();
+        }
+        // Priority 3: Estimate from saldo / tenor
+        else {
+          const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
+          const tenor = ESTIMATED_TENOR[baseType];
+          if (tenor) {
+            perLoanInstallment = Math.ceil(lbSaldo / tenor).toString();
+          }
+        }
+
+        return {
+          id: lb.id,
+          loanType: lb.loanType,
+          period: lb.period,
+          saldo: lb.saldo,
+          monthlyInstallment: perLoanInstallment,
+        };
+      });
 
     return NextResponse.json({
       _debug: {

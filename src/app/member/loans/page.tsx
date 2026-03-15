@@ -622,7 +622,7 @@ export default function LoansPage() {
                             </div>
                             <div className="bg-blue-50 rounded-xl p-3 mb-4">
                               <p className="text-xs text-blue-700">
-                                Data ini berasal dari kertas kerja (data impor). Angsuran yang ditampilkan adalah angsuran + bunga sesuai Potongan Bulanan.
+                                Data ini berasal dari kertas kerja (data impor). Angsuran yang ditampilkan adalah angsuran pokok + bunga (imbal jasa) per bulan.
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-2">

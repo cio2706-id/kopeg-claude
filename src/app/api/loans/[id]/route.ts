@@ -148,37 +148,42 @@ export async function GET(
       ? parseFloat(deductionRows[0].totalPinjaman || "0")
       : 0;
 
-    // 6c. Calculate installment from loanBalances (monthlyInstallment or saldo/tenor fallback)
+    // 6c. Calculate total installment from imported balances
+    // Use per-loan kertas kerja angsuran (priority 1), then proportion from potongan (priority 2), then estimate
     const ESTIMATED_TENOR: Record<string, number> = {
-      reguler: 10,
-      khusus: 24,
-      barang: 10,
+      reguler: 10, khusus: 24, barang: 10, travel: 12,
+      kepemilikan_kendaraan: 36, channeling: 60,
     };
-    let loanBalanceInstallment = 0;
-    let estimatedInstallment = 0;
+
+    let totalImportedInstallment = 0;
+    let hasExcelAngsuran = false;
+    const totalImportedSaldo = importedBalances.reduce((s, lb) => s + parseFloat(lb.saldo || "0"), 0);
+
     for (const lb of importedBalances) {
       const saldo = parseFloat(lb.saldo || "0");
-      if (saldo > 0) {
-        if (lb.monthlyInstallment) {
-          loanBalanceInstallment += parseFloat(lb.monthlyInstallment);
-        } else {
-          const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
-          const tenor = ESTIMATED_TENOR[baseType];
-          if (tenor) {
-            estimatedInstallment += Math.ceil(saldo / tenor);
-          }
-        }
+      if (saldo <= 0) continue;
+
+      // Priority 1: Per-loan from kertas kerja Excel
+      if (lb.monthlyInstallment && parseFloat(lb.monthlyInstallment) > 0) {
+        totalImportedInstallment += parseFloat(lb.monthlyInstallment);
+        hasExcelAngsuran = true;
+      }
+      // Priority 2: Proportion from total potongan
+      else if (actualMonthlyDeduction > 0 && totalImportedSaldo > 0) {
+        totalImportedInstallment += Math.round(actualMonthlyDeduction * (saldo / totalImportedSaldo));
+      }
+      // Priority 3: Estimate from saldo / tenor
+      else {
+        const baseType = lb.loanType.startsWith("channeling") ? "channeling" : lb.loanType;
+        const tenor = ESTIMATED_TENOR[baseType] || 10;
+        totalImportedInstallment += Math.ceil(saldo / tenor);
       }
     }
 
-    // Priority: potongan > Excel angsuran > saldo/tenor estimate
-    const estimatedSaldoInstallment = actualMonthlyDeduction > 0
-      ? actualMonthlyDeduction
-      : (loanBalanceInstallment > 0 ? loanBalanceInstallment : estimatedInstallment);
-
-    const installmentSource = actualMonthlyDeduction > 0
-      ? "potongan"
-      : (loanBalanceInstallment > 0 ? "excel_angsuran" : "estimated");
+    const estimatedSaldoInstallment = totalImportedInstallment;
+    const installmentSource = hasExcelAngsuran
+      ? "excel_angsuran"
+      : (actualMonthlyDeduction > 0 ? "potongan" : "estimated");
 
     // 7. Fetch installment schedule (kartu pinjaman)
     const installments = await db
