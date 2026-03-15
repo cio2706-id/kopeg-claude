@@ -36,6 +36,16 @@ interface PurchaseOrder {
   createdAt: string;
 }
 
+interface PoItemData {
+  id: string;
+  itemName: string;
+  description: string | null;
+  quantity: number;
+  unit: string | null;
+  unitPrice: string;
+  totalPrice: string;
+}
+
 interface ApprovalRecord {
   id: string;
   approverRole: string;
@@ -76,6 +86,7 @@ function getStatusBadgeClasses(status: string): string {
 export default function PoTrackPage() {
   const [trackingNumber, setTrackingNumber] = useState("");
   const [po, setPo] = useState<PurchaseOrder | null>(null);
+  const [poItems, setPoItems] = useState<PoItemData[]>([]);
   const [approvalSteps, setApprovalSteps] = useState<ApprovalRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +98,7 @@ export default function PoTrackPage() {
   const [myPOsLoading, setMyPOsLoading] = useState(false);
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [poApprovals, setPoApprovals] = useState<Record<string, ApprovalRecord[]>>({});
+  const [poItemsMap, setPoItemsMap] = useState<Record<string, PoItemData[]>>({});
 
   const supabase = createSupabaseBrowserClient();
 
@@ -121,13 +133,14 @@ export default function PoTrackPage() {
     }
     setExpandedPoId(poItem.id);
 
-    // Fetch approvals for this PO if not cached
+    // Fetch approvals and items for this PO if not cached
     if (!poApprovals[poItem.id]) {
       try {
         const res = await fetch(`/api/purchase-orders?tracking=${encodeURIComponent(poItem.trackingNumber)}`);
         if (res.ok) {
           const data = await res.json();
           setPoApprovals((prev) => ({ ...prev, [poItem.id]: data.approvals || [] }));
+          setPoItemsMap((prev) => ({ ...prev, [poItem.id]: data.items || [] }));
         }
       } catch {
         // Silently ignore
@@ -159,6 +172,7 @@ export default function PoTrackPage() {
 
       const data = await res.json();
       setPo(data.purchaseOrder);
+      setPoItems(data.items || []);
       setApprovalSteps(data.approvals || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
@@ -168,8 +182,10 @@ export default function PoTrackPage() {
     }
   }
 
-  function renderPODetail(poData: PurchaseOrder, steps: ApprovalRecord[]) {
+  function renderPODetail(poData: PurchaseOrder, steps: ApprovalRecord[], itemsList?: PoItemData[]) {
     const progress = STATUS_PROGRESS[poData.status] || 0;
+    const displayItems = itemsList || [];
+    const itemsTotal = displayItems.reduce((sum, item) => sum + parseFloat(item.totalPrice || "0"), 0);
 
     return (
       <div className="p-5 border-t border-gray-100 space-y-5">
@@ -210,6 +226,33 @@ export default function PoTrackPage() {
             </div>
           )}
         </div>
+
+        {/* Item Details */}
+        {displayItems.length > 0 && (
+          <div className="pt-4 border-t border-gray-100">
+            <p className="text-sm font-semibold text-gray-900 mb-3">Detail Barang ({displayItems.length} item)</p>
+            <div className="space-y-2">
+              {displayItems.map((item, idx) => (
+                <div key={item.id || idx} className="bg-[#f4f7fe] rounded-xl p-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{item.itemName}</p>
+                      {item.description && <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>}
+                      <p className="text-xs text-gray-400 mt-1">
+                        {item.quantity} {item.unit || "pcs"} x {formatCurrency(Number(item.unitPrice))}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700">{formatCurrency(Number(item.totalPrice))}</p>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-between items-center pt-2 px-1">
+                <span className="text-xs font-semibold text-gray-500">TOTAL ITEM</span>
+                <span className="text-sm font-bold text-gray-900">{formatCurrency(itemsTotal)}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Documents */}
         {(poData.invoiceDocumentUrl || poData.receiptDocumentUrl) && (
@@ -408,7 +451,7 @@ export default function PoTrackPage() {
                           </div>
                         </button>
 
-                        {isExpanded && renderPODetail(poItem, poApprovals[poItem.id] || [])}
+                        {isExpanded && renderPODetail(poItem, poApprovals[poItem.id] || [], poItemsMap[poItem.id] || [])}
                       </div>
                     );
                   })}
@@ -464,7 +507,7 @@ export default function PoTrackPage() {
                   </div>
                   <p className="text-sm text-gray-700">{po.description}</p>
                 </div>
-                {renderPODetail(po, approvalSteps)}
+                {renderPODetail(po, approvalSteps, poItems)}
               </div>
             )}
 
