@@ -273,6 +273,7 @@ export async function GET() {
       pendingPoTasks,
       totalNotifications,
       notifications,
+      userRole: dbUser.role,
     });
   } catch (error) {
     console.error("Failed to fetch notifications:", error);

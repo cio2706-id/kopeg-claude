@@ -32,6 +32,8 @@ interface NavItem {
   icon: React.ReactNode;
   section?: string;
   badgeKey?: string;
+  /** If set, only show this nav item for these roles */
+  roles?: string[];
 }
 
 interface NotificationItem {
@@ -58,7 +60,7 @@ const pengurusNav: NavItem[] = [
   { label: "Dashboard", href: "/pengurus/dashboard", icon: <LayoutDashboard className="w-5 h-5" />, section: "MENU" },
   { label: "Anggota", href: "/pengurus/members", icon: <Users className="w-5 h-5" /> },
   { label: "Persetujuan", href: "/pengurus/approvals", icon: <CheckSquare className="w-5 h-5" />, badgeKey: "pendingApprovals" },
-  { label: "Persetujuan Pinjaman", href: "/pengurus/approvals?tab=loan", icon: <CreditCard className="w-5 h-5" />, badgeKey: "pendingApprovals" },
+  { label: "Persetujuan Pinjaman", href: "/pengurus/approvals?tab=loan", icon: <CreditCard className="w-5 h-5" />, badgeKey: "pendingApprovals", roles: ["staf_sekper", "manager", "bendahara", "ketua"] },
   { label: "Purchase Order", href: "/pengurus/po", icon: <ShoppingCart className="w-5 h-5" />, badgeKey: "pendingPoTasks" },
   { label: "Pinjaman", href: "/pengurus/loans", icon: <CreditCard className="w-5 h-5" /> },
   { label: "SPP", href: "/pengurus/spp", icon: <FileText className="w-5 h-5" />, badgeKey: "totalSpp" },
@@ -130,10 +132,14 @@ export default function DashboardLayout({
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
+  const [userRole, setUserRole] = useState("");
   const bellRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
-  const navItems = variant === "pengurus" ? pengurusNav : memberNav;
+  const allNavItems = variant === "pengurus" ? pengurusNav : memberNav;
+  const navItems = allNavItems.filter(
+    (item) => !item.roles || item.roles.includes(userRole)
+  );
 
   // Fetch notification counts for pengurus
   useEffect(() => {
@@ -146,6 +152,7 @@ export default function DashboardLayout({
           const data = await res.json();
           setBadges(data);
           setNotifications(data.notifications || []);
+          if (data.userRole) setUserRole(data.userRole);
         }
       } catch {
         // Silently ignore
