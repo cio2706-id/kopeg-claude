@@ -246,6 +246,18 @@ function PengurusApprovalsContent() {
     }
   }, [poDetails, poDetailLoading]);
 
+  // ─── Prefetch all approval details so cards show info before clicking ───
+  useEffect(() => {
+    if (approvals.length === 0) return;
+    for (const approval of approvals) {
+      if (approval.referenceType === "loan") {
+        fetchLoanDetail(approval.referenceId);
+      } else if (approval.referenceType === "purchase_order") {
+        fetchPoDetail(approval.referenceId);
+      }
+    }
+  }, [approvals, fetchLoanDetail, fetchPoDetail]);
+
   // ─── Card Expansion ────────────────────────────────────────────────────
 
   function handleCardClick(approval: Approval) {
