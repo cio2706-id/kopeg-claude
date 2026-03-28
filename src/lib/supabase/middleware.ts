@@ -29,13 +29,21 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protected routes
-  const protectedPaths = ["/member/dashboard", "/pengurus/dashboard"];
+  // Protected routes - protect all member/pengurus pages and API routes
+  const protectedPaths = ["/member/", "/pengurus/", "/api/"];
   const isProtected = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
 
   if (isProtected && !user) {
+    // API routes should return 401 JSON, not redirect
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // Exclude login pages from redirect loop
+    if (request.nextUrl.pathname.endsWith("/login")) {
+      return supabaseResponse;
+    }
     const loginUrl = request.nextUrl.pathname.startsWith("/pengurus")
       ? "/pengurus/login"
       : "/member/login";

@@ -127,6 +127,9 @@ export default function PengurusLoansPage() {
 
     setSavingQuota(loanType);
     try {
+      // Refresh session to ensure auth cookies are current
+      await supabase.auth.getSession();
+
       const res = await fetch("/api/loan-quotas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,12 +144,19 @@ export default function PengurusLoansPage() {
         if (quotaRes.ok) {
           const data = await quotaRes.json();
           setQuotas(data.quotas || []);
+          setCrossQuota(data.crossQuota || null);
         }
         setQuotaEdits((prev) => {
           const next = { ...prev };
           delete next[loanType];
           return next;
         });
+      } else if (res.status === 401) {
+        alert("Sesi telah berakhir. Silakan login kembali.");
+        router.push("/pengurus/login");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Gagal menyimpan kuota");
       }
     } catch {
       alert("Gagal menyimpan kuota");
