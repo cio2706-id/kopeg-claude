@@ -217,7 +217,7 @@ export async function GET() {
       }
     }
 
-    // Also count PO approval tasks (review_pengadaan, pricing for staf_pengadaan; pending_manager for manager)
+    // Also count PO approval tasks (review_pengadaan, pricing for staf_pengadaan)
     const rolePoApprovalStatuses: Record<string, PoStatus[]> = {
       staf_pengadaan: ["review_pengadaan", "pricing"],
     };
@@ -247,6 +247,16 @@ export async function GET() {
       }
     }
 
+    // 5. New SPP notifications for staf_treasury (SPP recently created / in draft)
+    let newSppCount = 0;
+    if (dbUser.role === "staf_treasury") {
+      const draftSpps = await db
+        .select({ id: spp.id })
+        .from(spp)
+        .where(eq(spp.status, "draft"));
+      newSppCount = draftSpps.length;
+    }
+
     // Sort notifications by createdAt descending (newest first)
     notifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -258,7 +268,8 @@ export async function GET() {
       pendingSppLoans,
       pendingSppPOs,
       pendingSppApprovals,
-      totalSpp: pendingSppLoans + pendingSppPOs + pendingSppApprovals,
+      newSppCount,
+      totalSpp: pendingSppLoans + pendingSppPOs + pendingSppApprovals + newSppCount,
       pendingPoTasks,
       totalNotifications,
       notifications,

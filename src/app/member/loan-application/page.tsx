@@ -334,8 +334,8 @@ export default function LoanApplicationPage() {
       return;
     }
 
-    // 40% cicilan validation
-    if (loanType && loanType !== "channeling" && loanType !== "barang") {
+    // 40% cicilan validation (applied to ALL loan types)
+    if (loanType) {
       const income = parseFloat(penghasilanBruto);
       const newInstallment = calculateMonthlyInstallment(
         parseFloat(amount),

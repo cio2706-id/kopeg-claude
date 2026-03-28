@@ -90,6 +90,13 @@ export async function POST(request: NextRequest) {
     // ─── Handle Loan Approvals ───────────────────────────────────────
     if (approval.referenceType === "loan") {
       if (parsed.data.action === "hold") {
+        // Only Bendahara can hold loans
+        if (dbUser.role !== "bendahara") {
+          return NextResponse.json(
+            { error: "Hanya Bendahara yang dapat menunda pinjaman" },
+            { status: 403 }
+          );
+        }
         // Hold: move loan to next month's queue
         const [loan] = await db
           .select()

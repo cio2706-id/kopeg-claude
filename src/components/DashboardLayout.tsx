@@ -58,6 +58,7 @@ const pengurusNav: NavItem[] = [
   { label: "Dashboard", href: "/pengurus/dashboard", icon: <LayoutDashboard className="w-5 h-5" />, section: "MENU" },
   { label: "Anggota", href: "/pengurus/members", icon: <Users className="w-5 h-5" /> },
   { label: "Persetujuan", href: "/pengurus/approvals", icon: <CheckSquare className="w-5 h-5" />, badgeKey: "pendingApprovals" },
+  { label: "Persetujuan Pinjaman", href: "/pengurus/approvals?tab=loan", icon: <CreditCard className="w-5 h-5" />, badgeKey: "pendingApprovals" },
   { label: "Purchase Order", href: "/pengurus/po", icon: <ShoppingCart className="w-5 h-5" />, badgeKey: "pendingPoTasks" },
   { label: "Pinjaman", href: "/pengurus/loans", icon: <CreditCard className="w-5 h-5" /> },
   { label: "SPP", href: "/pengurus/spp", icon: <FileText className="w-5 h-5" />, badgeKey: "totalSpp" },
@@ -200,10 +201,11 @@ export default function DashboardLayout({
         {/* Navigation */}
         <nav className="flex-1 px-4 overflow-y-auto">
           {navItems.map((item, index) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const hrefPath = item.href.split("?")[0];
+            const isActive = pathname === hrefPath || pathname.startsWith(hrefPath + "/");
             const badgeCount = item.badgeKey ? (badges[item.badgeKey] || 0) : 0;
             return (
-              <div key={item.href}>
+              <div key={item.href + item.label}>
                 {item.section && (
                   <p className={`text-[10px] font-semibold text-gray-500 uppercase tracking-widest px-3 ${index > 0 ? "mt-6" : ""} mb-2`}>
                     {item.section}

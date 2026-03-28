@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ROLE_LABELS, LOAN_TYPE_LABELS, LOAN_STATUS_LABELS, formatCurrency } from "@/lib/utils";
@@ -113,11 +113,21 @@ type FilterTab = "all" | "loan" | "purchase_order";
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function PengurusApprovalsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#f0f0f0] flex items-center justify-center"><div className="animate-spin w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full" /></div>}>
+      <PengurusApprovalsContent />
+    </Suspense>
+  );
+}
+
+function PengurusApprovalsContent() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [approvals, setApprovals] = useState<Approval[]>([]);
-  const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as FilterTab) || "all";
+  const [activeTab, setActiveTab] = useState<FilterTab>(initialTab);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
   const [loanDetails, setLoanDetails] = useState<Record<string, LoanDetail>>({});
@@ -132,6 +142,7 @@ export default function PengurusApprovalsPage() {
   const [managerNewPrice, setManagerNewPrice] = useState<Record<string, string>>({});
   const [managerPriceNotes, setManagerPriceNotes] = useState<Record<string, string>>({});
   const [managerLoanPrice, setManagerLoanPrice] = useState<Record<string, string>>({});
+  const [quotaData, setQuotaData] = useState<{ quotas: any[]; crossQuota: any } | null>(null);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
 
@@ -168,7 +179,23 @@ export default function PengurusApprovalsPage() {
         const me = (usersData.users || []).find(
           (u: any) => u.email === user.email
         );
-        if (me) setUserDbRole(me.role);
+        if (me) {
+          setUserDbRole(me.role);
+          // Fetch quota data for Bendahara
+          if (me.role === "bendahara") {
+            const now = new Date();
+            const currentPeriod = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}`;
+            try {
+              const quotaRes = await fetch(`/api/loan-quotas?period=${currentPeriod}`);
+              if (quotaRes.ok) {
+                const qData = await quotaRes.json();
+                setQuotaData(qData);
+              }
+            } catch {
+              // Silently ignore quota fetch errors
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -749,6 +776,50 @@ export default function PengurusApprovalsPage() {
           </div>
         )}
 
+        {/* Quota Info for Bendahara */}
+        {userDbRole === "bendahara" && quotaData?.crossQuota && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5" />
+              Kuota Pinjaman Bulan Ini
+            </h4>
+            <div className="bg-blue-50 rounded-xl p-4 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-500">Kuota Reguler</span>
+                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.regulerQuota)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-500">Terpakai Reguler</span>
+                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.regulerUsed)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-500">Kuota Khusus</span>
+                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.khususQuota)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-xs text-gray-500">Terpakai Khusus</span>
+                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.khususUsed)}</span>
+              </div>
+              <div className="border-t border-blue-200 pt-2 mt-2">
+                <div className="flex justify-between font-semibold">
+                  <span className="text-xs text-blue-700">Kuota Gabungan</span>
+                  <span className="text-xs text-blue-900">{formatCurrency(quotaData.crossQuota.combinedQuota)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span className="text-xs text-blue-700">Sudah Dicairkan</span>
+                  <span className="text-xs text-blue-900">{formatCurrency(quotaData.crossQuota.combinedUsed)}</span>
+                </div>
+                <div className="flex justify-between font-semibold">
+                  <span className="text-xs text-blue-700">Sisa Kuota</span>
+                  <span className={`text-xs ${quotaData.crossQuota.combinedRemaining < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {formatCurrency(quotaData.crossQuota.combinedRemaining)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="mt-5 pt-5 border-t border-gray-100">
           {canAct ? (
@@ -775,7 +846,7 @@ export default function PengurusApprovalsPage() {
                     <Check className="w-4 h-4" />
                     Setujui
                   </button>
-                  {approval.referenceType === "loan" && (userDbRole === "staf_sekper" || userDbRole === "staf_treasury") && (
+                  {approval.referenceType === "loan" && userDbRole === "bendahara" && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

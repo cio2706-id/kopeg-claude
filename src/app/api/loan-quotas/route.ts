@@ -18,10 +18,10 @@ const quotaSchema = z.object({
   quotaAmount: z.number().min(0), // Rupiah amount
 });
 
-// Roles that can VIEW quotas
-const VIEW_ROLES = ["staf_treasury", "staf_sekper", "manager", "bendahara", "ketua"];
-// Roles that can SET/MODIFY quotas
-const SET_ROLES = ["manager", "bendahara", "ketua"];
+// Roles that can VIEW quotas - only Bendahara
+const VIEW_ROLES = ["bendahara"];
+// Roles that can SET/MODIFY quotas - only Bendahara
+const SET_ROLES = ["bendahara"];
 
 export async function GET(request: NextRequest) {
   try {
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     // Only Manager, Bendahara, Ketua can set quotas
     if (!SET_ROLES.includes(dbUser.role)) {
       return NextResponse.json(
-        { error: "Hanya Manager, Bendahara, atau Ketua yang dapat mengatur kuota pinjaman" },
+        { error: "Hanya Bendahara yang dapat mengatur kuota pinjaman" },
         { status: 403 }
       );
     }
