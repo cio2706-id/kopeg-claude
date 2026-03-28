@@ -67,10 +67,24 @@ export async function GET(request: NextRequest) {
       }
 
       // Enrich quotas with real-time used amounts
-      const enrichedQuotas = quotas.map((q) => ({
-        ...q,
-        usedAmount: (usedByType[q.loanType] || 0).toString(),
-      }));
+      const ALL_LOAN_TYPES = ["reguler", "khusus", "barang", "travel", "kepemilikan_kendaraan", "channeling"] as const;
+      const existingTypes = new Set(quotas.map((q) => q.loanType));
+      const enrichedQuotas = [
+        ...quotas.map((q) => ({
+          ...q,
+          usedAmount: (usedByType[q.loanType] || 0).toString(),
+        })),
+        // Add virtual entries for loan types without DB records
+        ...ALL_LOAN_TYPES.filter((t) => !existingTypes.has(t)).map((t) => ({
+          id: `virtual-${t}`,
+          period,
+          loanType: t,
+          quotaAmount: (DEFAULT_QUOTAS[t] || 0).toString(),
+          usedAmount: (usedByType[t] || 0).toString(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })),
+      ];
 
       // Calculate cross-quota info for reguler/khusus
       const regulerQuota = quotas.find((q) => q.loanType === "reguler");
