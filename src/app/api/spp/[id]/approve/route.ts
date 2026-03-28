@@ -18,7 +18,7 @@ const approveSchema = z.object({
  * pending_bendahara → bendahara approves → approved
  *
  * On final approval:
- * - If linked to loan: update loan status to bank_process
+ * - If linked to loan: update loan status to antrian_pembayaran (payment queue)
  * - If linked to PO: update PO status to spp_process
  */
 export async function POST(
@@ -102,7 +102,7 @@ export async function POST(
       if (currentSpp.referenceType === "loan" && currentSpp.referenceId) {
         await db
           .update(loans)
-          .set({ status: "bank_process", updatedAt: now })
+          .set({ status: "antrian_pembayaran", updatedAt: now })
           .where(eq(loans.id, currentSpp.referenceId));
       } else if (currentSpp.referenceType === "purchase_order" && currentSpp.referenceId) {
         await db

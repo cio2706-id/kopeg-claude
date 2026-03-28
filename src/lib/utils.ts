@@ -107,6 +107,7 @@ export const LOAN_STATUS_LABELS: Record<string, string> = {
   approved: "Disetujui",
   spp_process: "Proses SPP",
   bank_process: "Proses Bank",
+  antrian_pembayaran: "Antrian Pembayaran",
   disbursed: "Dicairkan",
   rejected: "Ditolak",
   on_review: "On Review",

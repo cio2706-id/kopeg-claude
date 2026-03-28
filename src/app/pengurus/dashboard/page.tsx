@@ -300,6 +300,8 @@ export default function PengurusDashboardPage() {
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     if (["rejected"].includes(status))
       return "bg-red-50 text-red-700 border border-red-200";
+    if (["antrian_pembayaran"].includes(status))
+      return "bg-blue-50 text-blue-700 border border-blue-200";
     if (["draft"].includes(status))
       return "bg-gray-100 text-gray-600 border border-gray-200";
     return "bg-amber-50 text-amber-700 border border-amber-200";

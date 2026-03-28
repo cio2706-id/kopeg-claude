@@ -37,6 +37,7 @@ export const loanStatusEnum = pgEnum("loan_status", [
   "approved",
   "spp_process",
   "bank_process",
+  "antrian_pembayaran",
   "disbursed",
   "rejected",
   "on_review",

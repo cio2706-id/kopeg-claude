@@ -190,6 +190,7 @@ export default function PengurusLoansPage() {
     switch (status) {
       case "spp_process": return { label: "Buat SPP", nextStatus: "", needsInput: "spp", requiredRole: "staf_treasury" };
       case "bank_process": return { label: "Dana Dicairkan", nextStatus: "disbursed", requiredRole: "staf_treasury" };
+      case "antrian_pembayaran": return { label: "Cairkan Dana", nextStatus: "disbursed", requiredRole: "staf_treasury" };
       case "held": return { label: "Proses Ulang", nextStatus: "pending_sekper", requiredRole: "staf_sekper", icon: "resume" };
       default: return null;
     }
@@ -198,6 +199,8 @@ export default function PengurusLoansPage() {
   function getStatusBadgeClasses(status: string): string {
     if (["approved", "disbursed", "selesai"].includes(status))
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+    if (["antrian_pembayaran"].includes(status))
+      return "bg-blue-50 text-blue-700 border border-blue-200";
     if (["rejected"].includes(status))
       return "bg-red-50 text-red-700 border border-red-200";
     if (["held"].includes(status))
