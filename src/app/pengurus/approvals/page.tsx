@@ -777,48 +777,156 @@ function PengurusApprovalsContent() {
         )}
 
         {/* Quota Info for Bendahara */}
-        {userDbRole === "bendahara" && quotaData?.crossQuota && (
+        {userDbRole === "bendahara" && quotaData?.crossQuota && (() => {
+          const cq = quotaData.crossQuota;
+          const regulerPct = cq.regulerQuota > 0 ? Math.round((cq.regulerUsed / cq.regulerQuota) * 100) : 0;
+          const khususPct = cq.khususQuota > 0 ? Math.round((cq.khususUsed / cq.khususQuota) * 100) : 0;
+          const combinedPct = cq.combinedQuota > 0 ? Math.round((cq.combinedUsed / cq.combinedQuota) * 100) : 0;
+          const loanAmount = Number(loan.amount);
+          const afterApproval = cq.combinedUsed + loanAmount;
+          const afterPct = cq.combinedQuota > 0 ? Math.round((afterApproval / cq.combinedQuota) * 100) : 0;
+          const wouldExceed = afterApproval > cq.combinedQuota;
+          const isQuotaType = ["reguler", "khusus"].includes(loan.loanType);
+
+          return (
           <div className="mt-5 pt-5 border-t border-gray-100">
             <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5" />
               Kuota Pinjaman Bulan Ini
             </h4>
-            <div className="bg-blue-50 rounded-xl p-4 space-y-2">
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-500">Kuota Reguler</span>
-                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.regulerQuota)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-500">Terpakai Reguler</span>
-                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.regulerUsed)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-500">Kuota Khusus</span>
-                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.khususQuota)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-500">Terpakai Khusus</span>
-                <span className="text-xs font-medium text-gray-900">{formatCurrency(quotaData.crossQuota.khususUsed)}</span>
-              </div>
-              <div className="border-t border-blue-200 pt-2 mt-2">
-                <div className="flex justify-between font-semibold">
-                  <span className="text-xs text-blue-700">Kuota Gabungan</span>
-                  <span className="text-xs text-blue-900">{formatCurrency(quotaData.crossQuota.combinedQuota)}</span>
+
+            {/* Reguler & Khusus side by side */}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              {/* Reguler */}
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Reguler</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${regulerPct >= 100 ? 'bg-red-100 text-red-700' : regulerPct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {regulerPct}%
+                  </span>
                 </div>
-                <div className="flex justify-between font-semibold">
-                  <span className="text-xs text-blue-700">Sudah Dicairkan</span>
-                  <span className="text-xs text-blue-900">{formatCurrency(quotaData.crossQuota.combinedUsed)}</span>
+                <div className="w-full bg-slate-200 rounded-full h-2 mb-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${regulerPct >= 100 ? 'bg-red-500' : regulerPct >= 80 ? 'bg-amber-500' : 'bg-teal-500'}`}
+                    style={{ width: `${Math.min(regulerPct, 100)}%` }}
+                  />
                 </div>
-                <div className="flex justify-between font-semibold">
-                  <span className="text-xs text-blue-700">Sisa Kuota</span>
-                  <span className={`text-xs ${quotaData.crossQuota.combinedRemaining < 0 ? "text-red-600" : "text-emerald-600"}`}>
-                    {formatCurrency(quotaData.crossQuota.combinedRemaining)}
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400">Terpakai</span>
+                  <span className="font-medium text-slate-700">{formatCurrency(cq.regulerUsed)}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400">Kuota</span>
+                  <span className="font-medium text-slate-700">{formatCurrency(cq.regulerQuota)}</span>
+                </div>
+                <div className="flex justify-between text-[10px] mt-0.5">
+                  <span className="text-slate-400">Sisa</span>
+                  <span className={`font-semibold ${cq.regulerQuota - cq.regulerUsed < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {formatCurrency(cq.regulerQuota - cq.regulerUsed)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Khusus */}
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Khusus</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${khususPct >= 100 ? 'bg-red-100 text-red-700' : khususPct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {khususPct}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2 mb-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${khususPct >= 100 ? 'bg-red-500' : khususPct >= 80 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                    style={{ width: `${Math.min(khususPct, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400">Terpakai</span>
+                  <span className="font-medium text-slate-700">{formatCurrency(cq.khususUsed)}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400">Kuota</span>
+                  <span className="font-medium text-slate-700">{formatCurrency(cq.khususQuota)}</span>
+                </div>
+                <div className="flex justify-between text-[10px] mt-0.5">
+                  <span className="text-slate-400">Sisa</span>
+                  <span className={`font-semibold ${cq.khususQuota - cq.khususUsed < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {formatCurrency(cq.khususQuota - cq.khususUsed)}
                   </span>
                 </div>
               </div>
             </div>
+
+            {/* Combined Quota */}
+            <div className="bg-blue-50 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-blue-800">Kuota Gabungan</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${combinedPct >= 100 ? 'bg-red-100 text-red-700' : combinedPct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {combinedPct}% terpakai
+                </span>
+              </div>
+
+              {/* Combined progress bar */}
+              <div className="relative w-full bg-blue-200 rounded-full h-3 mb-3">
+                <div
+                  className={`h-3 rounded-full transition-all ${combinedPct >= 100 ? 'bg-red-500' : combinedPct >= 80 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                  style={{ width: `${Math.min(combinedPct, 100)}%` }}
+                />
+                {/* Show projected bar if this loan would increase usage */}
+                {isQuotaType && afterPct > combinedPct && (
+                  <div
+                    className={`absolute top-0 h-3 rounded-r-full transition-all ${wouldExceed ? 'bg-red-300' : 'bg-blue-300'}`}
+                    style={{
+                      left: `${Math.min(combinedPct, 100)}%`,
+                      width: `${Math.min(afterPct - combinedPct, 100 - Math.min(combinedPct, 100))}%`,
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] text-blue-500 font-medium">Total Kuota</p>
+                  <p className="text-xs font-bold text-blue-900">{formatCurrency(cq.combinedQuota)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-blue-500 font-medium">Dicairkan</p>
+                  <p className="text-xs font-bold text-blue-900">{formatCurrency(cq.combinedUsed)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-blue-500 font-medium">Sisa</p>
+                  <p className={`text-xs font-bold ${cq.combinedRemaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {formatCurrency(cq.combinedRemaining)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Impact of approving this loan */}
+              {isQuotaType && (
+                <div className={`mt-3 pt-3 border-t ${wouldExceed ? 'border-red-200' : 'border-blue-200'}`}>
+                  <div className={`flex items-start gap-2 rounded-lg p-2.5 ${wouldExceed ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                    <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${wouldExceed ? 'text-red-500' : 'text-emerald-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[11px] font-semibold ${wouldExceed ? 'text-red-700' : 'text-emerald-700'}`}>
+                        {wouldExceed ? 'Melebihi Kuota!' : 'Dalam Kuota'}
+                      </p>
+                      <p className={`text-[10px] mt-0.5 ${wouldExceed ? 'text-red-600' : 'text-emerald-600'}`}>
+                        Jika disetujui ({formatCurrency(loanAmount)}), total menjadi {formatCurrency(afterApproval)} dari {formatCurrency(cq.combinedQuota)} ({afterPct}%)
+                      </p>
+                      {wouldExceed && (
+                        <p className="text-[10px] text-red-600 font-semibold mt-0.5">
+                          Kelebihan: {formatCurrency(afterApproval - cq.combinedQuota)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Action Buttons */}
         <div className="mt-5 pt-5 border-t border-gray-100">
