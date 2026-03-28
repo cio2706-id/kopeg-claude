@@ -46,7 +46,7 @@ export async function GET() {
     }
 
     const myApprovals = Array.from(currentStepByRef.values()).filter(
-      (a) => a.approverRole === dbUser.role
+      (a) => a.approverRole === dbUser.role && !(dbUser.role === "staf_treasury" && a.referenceType === "loan")
     );
 
     // Fetch detail for each approval notification

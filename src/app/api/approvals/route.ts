@@ -568,12 +568,16 @@ export async function GET(request: NextRequest) {
     let filteredApprovals;
     if (viewAll) {
       // Pengurus dashboard: only show items where current step matches this user's role
+      // staf_treasury does NOT approve loans - they handle SPP creation instead
       filteredApprovals = currentSteps.filter(
-        (a) => a.approverRole === dbUser.role
+        (a) => a.approverRole === dbUser.role && !(dbUser.role === "staf_treasury" && a.referenceType === "loan")
       );
     } else if (dbUser.role !== "member") {
       // Pengurus approvals page: show all current steps
-      filteredApprovals = currentSteps;
+      // Exclude loan approvals for staf_treasury (they handle SPP, not loan approvals)
+      filteredApprovals = dbUser.role === "staf_treasury"
+        ? currentSteps.filter((a) => a.referenceType !== "loan")
+        : currentSteps;
     } else {
       // Member: only their role's approvals
       filteredApprovals = currentSteps.filter(
