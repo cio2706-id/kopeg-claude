@@ -128,9 +128,10 @@ export default function LoanApplicationPage() {
   // Common fields
   const [amount, setAmount] = useState("");
   const [tenor, setTenor] = useState("");
-  const [purpose, setPurpose] = useState("");
   const [interestMethod, setInterestMethod] = useState<InterestMethod>("flat");
-  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [slipGajiFile, setSlipGajiFile] = useState<File | null>(null);
+  const [dokumenPendukungFile, setDokumenPendukungFile] = useState<File | null>(null);
 
   // Reguler-specific
   const [loanCriteria, setLoanCriteria] = useState("");
@@ -172,8 +173,9 @@ export default function LoanApplicationPage() {
 
   // Channeling-specific
   const [channelingAmount, setChannelingAmount] = useState("");
-  const [channelingPurpose, setChannelingPurpose] = useState("");
-  const [channelingDocumentFile, setChannelingDocumentFile] = useState<File | null>(null);
+  const [channelingEvidenceFile, setChannelingEvidenceFile] = useState<File | null>(null);
+  const [channelingSlipGajiFile, setChannelingSlipGajiFile] = useState<File | null>(null);
+  const [channelingDokumenPendukungFile, setChannelingDokumenPendukungFile] = useState<File | null>(null);
   const [channelingNomorRekening, setChannelingNomorRekening] = useState("");
   const [channelingNamaBank, setChannelingNamaBank] = useState("");
   const [channelingAtasNama, setChannelingAtasNama] = useState("");
@@ -352,21 +354,24 @@ export default function LoanApplicationPage() {
       }
     }
 
-    if (!documentFile) {
-      setError("Dokumen Pendukung wajib diupload");
+    if (!evidenceFile || !slipGajiFile || !dokumenPendukungFile) {
+      setError("Semua dokumen (Evidence, Slip Gaji, Dokumen Pendukung) wajib diupload");
       setLoading(false);
       return;
     }
 
     try {
-      let documentUrls: string[] = [];
-      const formData = new FormData();
-      formData.append("file", documentFile);
-      formData.append("type", "loan");
-      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
-      if (uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        documentUrls = [uploadData.url];
+      const documentUrls: string[] = [];
+      const filesToUpload = [evidenceFile, slipGajiFile, dokumenPendukungFile];
+      for (const file of filesToUpload) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", "loan");
+        const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          documentUrls.push(uploadData.url);
+        }
       }
 
       const config = LOAN_TYPES[loanType as LoanType];
@@ -379,7 +384,6 @@ export default function LoanApplicationPage() {
           loanType,
           amount: loanAmount,
           tenorMonths: parseInt(tenor),
-          purpose,
           interestRate: config.rate,
           interestMethod,
           formData: buildFormData(),
@@ -407,21 +411,24 @@ export default function LoanApplicationPage() {
     setLoading(true);
     setError(null);
 
-    if (!channelingDocumentFile) {
-      setError("Dokumen Pendukung wajib diupload");
+    if (!channelingEvidenceFile || !channelingSlipGajiFile || !channelingDokumenPendukungFile) {
+      setError("Semua dokumen (Evidence, Slip Gaji, Dokumen Pendukung) wajib diupload");
       setLoading(false);
       return;
     }
 
     try {
-      let documentUrls: string[] = [];
-      const formData = new FormData();
-      formData.append("file", channelingDocumentFile);
-      formData.append("type", "loan");
-      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
-      if (uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        documentUrls = [uploadData.url];
+      const documentUrls: string[] = [];
+      const filesToUpload = [channelingEvidenceFile, channelingSlipGajiFile, channelingDokumenPendukungFile];
+      for (const file of filesToUpload) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", "loan");
+        const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          documentUrls.push(uploadData.url);
+        }
       }
 
       const res = await fetch("/api/loans", {
@@ -431,12 +438,11 @@ export default function LoanApplicationPage() {
           loanType: "channeling",
           amount: channelingAmount ? parseFloat(channelingAmount) : 1,
           tenorMonths: 1,
-          purpose: channelingPurpose || "Pinjaman Channeling (Mandiri & BSI)",
+          purpose: "Pinjaman Channeling (Mandiri & BSI)",
           interestRate: 0,
           documentUrls: documentUrls.length > 0 ? documentUrls : undefined,
           formData: {
             channelingAmount: channelingAmount ? parseFloat(channelingAmount) : undefined,
-            channelingPurpose,
             nomorRekening: channelingNomorRekening,
             namaBank: channelingNamaBank,
             atasNamaRekening: channelingAtasNama,
@@ -735,16 +741,6 @@ export default function LoanApplicationPage() {
                   placeholder="Masukkan perkiraan jumlah"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tujuan Pinjaman - Opsional</label>
-                <textarea
-                  value={channelingPurpose}
-                  onChange={(e) => setChannelingPurpose(e.target.value)}
-                  rows={3}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-sky-500 focus:border-sky-500 focus:bg-white transition-all outline-none resize-none"
-                  placeholder="Jelaskan tujuan pinjaman..."
-                />
-              </div>
             </div>
 
             {/* ── Bank Account Info ── */}
@@ -788,41 +784,116 @@ export default function LoanApplicationPage() {
             </div>
 
             {/* ── Document Upload ── */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Wajib) *</h2>
-              <p className="text-xs text-gray-500 mb-3">
-                Upload dokumen pendukung seperti slip gaji, KTP, KK, atau dokumen lainnya (PDF, maks 5MB).
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+              <h2 className="font-semibold text-gray-900">Upload Dokumen (Wajib) *</h2>
+              <p className="text-xs text-gray-500">
+                Upload ketiga dokumen berikut dalam format PDF (maks 5MB per file).
               </p>
-              <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-all">
-                <Upload className="w-5 h-5 text-gray-400" />
-                <div className="flex-1">
-                  {channelingDocumentFile ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900 truncate">{channelingDocumentFile.name}</span>
-                      <span className="text-xs text-gray-400">({(channelingDocumentFile.size / 1024).toFixed(0)} KB)</span>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); setChannelingDocumentFile(null); }}
-                        className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file && file.size <= 5 * 1024 * 1024) setChannelingDocumentFile(file);
-                    else if (file) alert("Ukuran file maks 5MB");
-                  }}
-                  className="hidden"
-                />
-              </label>
+
+              {/* Evidence */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Evidence *</label>
+                <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-all">
+                  <Upload className="w-5 h-5 text-gray-400" />
+                  <div className="flex-1">
+                    {channelingEvidenceFile ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 truncate">{channelingEvidenceFile.name}</span>
+                        <span className="text-xs text-gray-400">({(channelingEvidenceFile.size / 1024).toFixed(0)} KB)</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); setChannelingEvidenceFile(null); }}
+                          className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && file.size <= 5 * 1024 * 1024) setChannelingEvidenceFile(file);
+                      else if (file) alert("Ukuran file maks 5MB");
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Slip Gaji */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Slip Gaji *</label>
+                <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-all">
+                  <Upload className="w-5 h-5 text-gray-400" />
+                  <div className="flex-1">
+                    {channelingSlipGajiFile ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 truncate">{channelingSlipGajiFile.name}</span>
+                        <span className="text-xs text-gray-400">({(channelingSlipGajiFile.size / 1024).toFixed(0)} KB)</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); setChannelingSlipGajiFile(null); }}
+                          className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && file.size <= 5 * 1024 * 1024) setChannelingSlipGajiFile(file);
+                      else if (file) alert("Ukuran file maks 5MB");
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Dokumen Pendukung */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Dokumen Pendukung *</label>
+                <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 transition-all">
+                  <Upload className="w-5 h-5 text-gray-400" />
+                  <div className="flex-1">
+                    {channelingDokumenPendukungFile ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 truncate">{channelingDokumenPendukungFile.name}</span>
+                        <span className="text-xs text-gray-400">({(channelingDokumenPendukungFile.size / 1024).toFixed(0)} KB)</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); setChannelingDokumenPendukungFile(null); }}
+                          className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && file.size <= 5 * 1024 * 1024) setChannelingDokumenPendukungFile(file);
+                      else if (file) alert("Ukuran file maks 5MB");
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="bg-sky-50 border border-sky-200 rounded-2xl p-5">
@@ -1037,17 +1108,6 @@ export default function LoanApplicationPage() {
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tujuan Pinjaman *</label>
-              <textarea
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                required
-                rows={3}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-[#f0f0f0] focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:bg-white transition-all outline-none resize-none"
-                placeholder="Jelaskan tujuan pinjaman..."
-              />
-            </div>
           </div>
 
           {/* ── Reguler-specific fields ─────────────────────────────────────── */}
@@ -1562,41 +1622,116 @@ export default function LoanApplicationPage() {
           )}
 
           {/* ── Document Upload ─────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-4">Dokumen Pendukung (Wajib) *</h2>
-            <p className="text-xs text-gray-500 mb-3">
-              Upload dokumen pendukung seperti slip gaji, KTP, KK, atau dokumen lainnya (PDF, maks 5MB).
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+            <h2 className="font-semibold text-gray-900">Upload Dokumen (Wajib) *</h2>
+            <p className="text-xs text-gray-500">
+              Upload ketiga dokumen berikut dalam format PDF (maks 5MB per file).
             </p>
-            <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
-              <Upload className="w-5 h-5 text-gray-400" />
-              <div className="flex-1">
-                {documentFile ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 truncate">{documentFile.name}</span>
-                    <span className="text-xs text-gray-400">({(documentFile.size / 1024).toFixed(0)} KB)</span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); setDocumentFile(null); }}
-                      className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
-                    >
-                      Hapus
-                    </button>
-                  </div>
-                ) : (
-                  <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
-                )}
-              </div>
-              <input
-                type="file"
-                accept=".pdf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file && file.size <= 5 * 1024 * 1024) setDocumentFile(file);
-                  else if (file) alert("Ukuran file maks 5MB");
-                }}
-                className="hidden"
-              />
-            </label>
+
+            {/* Evidence */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Evidence *</label>
+              <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
+                <Upload className="w-5 h-5 text-gray-400" />
+                <div className="flex-1">
+                  {evidenceFile ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">{evidenceFile.name}</span>
+                      <span className="text-xs text-gray-400">({(evidenceFile.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setEvidenceFile(null); }}
+                        className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && file.size <= 5 * 1024 * 1024) setEvidenceFile(file);
+                    else if (file) alert("Ukuran file maks 5MB");
+                  }}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {/* Slip Gaji */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Slip Gaji *</label>
+              <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
+                <Upload className="w-5 h-5 text-gray-400" />
+                <div className="flex-1">
+                  {slipGajiFile ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">{slipGajiFile.name}</span>
+                      <span className="text-xs text-gray-400">({(slipGajiFile.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setSlipGajiFile(null); }}
+                        className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && file.size <= 5 * 1024 * 1024) setSlipGajiFile(file);
+                    else if (file) alert("Ukuran file maks 5MB");
+                  }}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {/* Dokumen Pendukung */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Dokumen Pendukung *</label>
+              <label className="flex items-center gap-3 border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-teal-400 hover:bg-teal-50/50 transition-all">
+                <Upload className="w-5 h-5 text-gray-400" />
+                <div className="flex-1">
+                  {dokumenPendukungFile ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">{dokumenPendukungFile.name}</span>
+                      <span className="text-xs text-gray-400">({(dokumenPendukungFile.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setDokumenPendukungFile(null); }}
+                        className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">Klik untuk memilih file PDF</span>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && file.size <= 5 * 1024 * 1024) setDokumenPendukungFile(file);
+                    else if (file) alert("Ukuran file maks 5MB");
+                  }}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
 
           {/* ── Approval Info ───────────────────────────────────────────────── */}
@@ -1616,7 +1751,7 @@ export default function LoanApplicationPage() {
 
           <button
             type="submit"
-            disabled={loading || !loanType || (!amount && !isItemLoan) || !tenor || !documentFile || !penghasilanBruto || cicilanExceeds40}
+            disabled={loading || !loanType || (!amount && !isItemLoan) || !tenor || !evidenceFile || !slipGajiFile || !dokumenPendukungFile || !penghasilanBruto || cicilanExceeds40}
             className="w-full bg-teal-500 text-white py-3.5 rounded-xl font-semibold hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300"
           >
             {loading ? (
