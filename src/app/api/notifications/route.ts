@@ -169,10 +169,9 @@ export async function GET() {
     // 4. PO tasks for current role (post-SPP process tasks)
     type PoStatus = typeof purchaseOrders.status.enumValues[number];
     const rolePoStatusMap: Record<string, PoStatus[]> = {
-      staf_treasury: ["waiting_payment"],
       staf_pengadaan: ["spp_process", "procurement", "delivery"],
       staf_piutang: ["goods_received", "goods_delivered", "invoicing"],
-      staf_akunting: ["waiting_payment", "payment_received"],
+      staf_akunting: ["waiting_payment"],
     };
 
     // Action labels for PO statuses
@@ -183,8 +182,7 @@ export async function GET() {
       goods_received: "Konfirmasi Penerimaan Barang",
       goods_delivered: "Konfirmasi Pengiriman ke Client",
       invoicing: "Proses Invoice",
-      waiting_payment: "Proses Pembayaran",
-      payment_received: "Konfirmasi Pembayaran Diterima",
+      waiting_payment: "Upload Bukti Pembayaran & Selesaikan",
     };
 
     let pendingPoTasks = 0;

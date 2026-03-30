@@ -129,7 +129,6 @@ export const PO_STATUS_LABELS: Record<string, string> = {
   goods_delivered: "Barang Dikirim ke Client",
   invoicing: "Proses Invoice",
   waiting_payment: "Menunggu Pembayaran",
-  payment_received: "Pembayaran Diterima",
   completed: "Selesai",
   rejected: "Ditolak",
 };

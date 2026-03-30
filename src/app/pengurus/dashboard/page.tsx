@@ -293,7 +293,7 @@ export default function PengurusDashboardPage() {
 
   function getStatusBadgeClasses(status: string): string {
     if (
-      ["approved", "disbursed", "completed", "payment_received"].includes(
+      ["approved", "disbursed", "completed"].includes(
         status
       )
     )

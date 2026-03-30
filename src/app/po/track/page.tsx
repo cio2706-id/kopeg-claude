@@ -70,13 +70,12 @@ const STATUS_PROGRESS: Record<string, number> = {
   goods_delivered: 75,
   invoicing: 80,
   waiting_payment: 90,
-  payment_received: 95,
   completed: 100,
   rejected: 0,
 };
 
 function getStatusBadgeClasses(status: string): string {
-  if (["completed", "payment_received"].includes(status))
+  if (["completed"].includes(status))
     return "bg-green-100 text-green-700";
   if (["rejected"].includes(status))
     return "bg-red-100 text-red-700";

@@ -17,14 +17,13 @@ import { z } from "zod";
  *   goods_received → goods_delivered (staf_piutang)
  *   goods_delivered → invoicing (staf_piutang) - requires invoice upload
  *   invoicing → waiting_payment (staf_akunting)
- *   waiting_payment → payment_received (staf_treasury)
- *   payment_received → completed (staf_akunting) - requires payment verification
+ *   waiting_payment → completed (staf_akunting) - requires bukti pembayaran upload
  */
 const statusUpdateSchema = z.object({
   status: z.enum([
     "spp_process", "procurement", "delivery", "goods_received",
     "goods_delivered", "invoicing", "waiting_payment",
-    "payment_received", "completed",
+    "completed",
   ]),
   vendorName: z.string().optional(),
   deliveryDate: z.string().optional(),
@@ -33,8 +32,7 @@ const statusUpdateSchema = z.object({
   invoiceDate: z.string().optional(),
   invoiceDocumentUrl: z.string().url().optional(),
   taxInvoiceNumber: z.string().optional(),
-  paymentRef: z.string().optional(),
-  paymentVerified: z.boolean().optional(),
+  paymentProofUrl: z.string().url().optional(),
   notes: z.string().optional(),
 });
 
@@ -46,8 +44,7 @@ const ALLOWED_TRANSITIONS: Record<string, { nextStatuses: string[]; allowedRoles
   goods_received: { nextStatuses: ["goods_delivered"], allowedRoles: ["staf_piutang"] },
   goods_delivered: { nextStatuses: ["invoicing"], allowedRoles: ["staf_piutang"] },
   invoicing: { nextStatuses: ["waiting_payment"], allowedRoles: ["staf_akunting"] },
-  waiting_payment: { nextStatuses: ["payment_received"], allowedRoles: ["staf_treasury"] },
-  payment_received: { nextStatuses: ["completed"], allowedRoles: ["staf_akunting"] },
+  waiting_payment: { nextStatuses: ["completed"], allowedRoles: ["staf_akunting"] },
 };
 
 export async function PATCH(
@@ -132,12 +129,17 @@ export async function PATCH(
     if (parsed.data.invoiceDate) updateData.invoiceDate = new Date(parsed.data.invoiceDate);
     if (parsed.data.invoiceDocumentUrl) updateData.invoiceDocumentUrl = parsed.data.invoiceDocumentUrl;
     if (parsed.data.taxInvoiceNumber) updateData.taxInvoiceNumber = parsed.data.taxInvoiceNumber;
-    if (parsed.data.paymentRef) updateData.paymentRef = parsed.data.paymentRef;
 
-    if (parsed.data.status === "payment_received") {
-      updateData.paymentDate = new Date();
-    }
+    // Require bukti pembayaran upload for completing PO
     if (parsed.data.status === "completed") {
+      if (!parsed.data.paymentProofUrl) {
+        return NextResponse.json(
+          { error: "Bukti pembayaran masuk wajib diupload sebelum menyelesaikan PO" },
+          { status: 400 }
+        );
+      }
+      updateData.paymentProofUrl = parsed.data.paymentProofUrl;
+      updateData.paymentDate = new Date();
       updateData.completedAt = new Date();
     }
 

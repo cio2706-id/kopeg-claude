@@ -235,6 +235,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   invoiceDocumentUrl: text("invoice_document_url"),
   taxInvoiceNumber: varchar("tax_invoice_number", { length: 50 }),
   accurateInvoiceId: varchar("accurate_invoice_id", { length: 100 }),
+  paymentProofUrl: text("payment_proof_url"),
   paymentDate: timestamp("payment_date"),
   paymentRef: varchar("payment_ref", { length: 100 }),
   accuratePaymentId: varchar("accurate_payment_id", { length: 100 }),

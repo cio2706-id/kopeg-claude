@@ -38,6 +38,7 @@ interface PurchaseOrder {
   invoiceNumber?: string;
   taxInvoiceNumber?: string;
   paymentRef?: string;
+  paymentProofUrl?: string;
   sppId?: string | null;
   sppRef?: string | null;
   createdAt: string;
@@ -76,9 +77,9 @@ export default function PengurusPOPage() {
   const [taxInvoiceNumber, setTaxInvoiceNumber] = useState("");
   const [invoiceUploading, setInvoiceUploading] = useState(false);
 
-  // Payment verification modal (staf akunting)
+  // Payment proof upload modal (staf akunting)
   const [paymentModalPoId, setPaymentModalPoId] = useState<string | null>(null);
-  const [paymentVerified, setPaymentVerified] = useState(false);
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [paymentSaving, setPaymentSaving] = useState(false);
 
   // Batch selection (staf pengadaan)
@@ -293,30 +294,41 @@ export default function PengurusPOPage() {
     }
   }
 
-  /* ---- Payment Verification (staf akunting) ---- */
+  /* ---- Payment Proof Upload & Complete (staf akunting) ---- */
 
-  async function handlePaymentVerification(poId: string) {
-    if (!paymentVerified) {
-      alert("Anda harus memverifikasi bahwa pembayaran sudah dilakukan");
+  async function handlePaymentProofUpload(poId: string) {
+    if (!paymentProofFile) {
+      alert("Bukti pembayaran masuk wajib diupload");
       return;
     }
     setPaymentSaving(true);
     try {
+      const formData = new FormData();
+      formData.append("file", paymentProofFile);
+      formData.append("type", "payment_proof");
+      const uploadRes = await fetch("/api/upload-document", { method: "POST", body: formData });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        alert(err.error || "Gagal mengupload file");
+        return;
+      }
+      const { url } = await uploadRes.json();
+
       const res = await fetch(`/api/po/${poId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed" }),
+        body: JSON.stringify({ status: "completed", paymentProofUrl: url }),
       });
       if (res.ok) {
         setPaymentModalPoId(null);
-        setPaymentVerified(false);
+        setPaymentProofFile(null);
         loadData();
       } else {
         const data = await res.json();
         alert(data.error || "Gagal menyelesaikan PO");
       }
     } catch {
-      alert("Gagal menyelesaikan PO");
+      alert("Gagal mengupload bukti pembayaran");
     } finally {
       setPaymentSaving(false);
     }
@@ -390,14 +402,13 @@ export default function PengurusPOPage() {
       case "goods_received": return { label: "Upload Tanda Terima & Kirim", nextStatus: "goods_delivered", needsInput: "upload_receipt", requiredRole: "staf_piutang" };
       case "goods_delivered": return { label: "Upload Invoice & Proses", nextStatus: "invoicing", needsInput: "upload_invoice", requiredRole: "staf_piutang" };
       case "invoicing": return { label: "Menunggu Bayar", nextStatus: "waiting_payment", requiredRole: "staf_akunting" };
-      case "waiting_payment": return { label: "Bayar Diterima", nextStatus: "payment_received", requiredRole: "staf_treasury" };
-      case "payment_received": return { label: "Verifikasi & Selesai", nextStatus: "completed", needsInput: "verify_payment", requiredRole: "staf_akunting" };
+      case "waiting_payment": return { label: "Upload Bukti & Selesaikan", nextStatus: "completed", needsInput: "upload_payment_proof", requiredRole: "staf_akunting" };
       default: return null;
     }
   }
 
   function getStatusBadgeClasses(status: string): string {
-    if (["completed", "payment_received"].includes(status))
+    if (["completed"].includes(status))
       return "bg-emerald-50 text-emerald-700 border border-emerald-200";
     if (["rejected"].includes(status))
       return "bg-red-50 text-red-700 border border-red-200";
@@ -408,10 +419,10 @@ export default function PengurusPOPage() {
 
   const totalPO = purchaseOrders.length;
   const pendingPO = purchaseOrders.filter(
-    (po) => !["completed", "rejected", "payment_received"].includes(po.status)
+    (po) => !["completed", "rejected"].includes(po.status)
   ).length;
   const completedPO = purchaseOrders.filter(
-    (po) => po.status === "completed" || po.status === "payment_received"
+    (po) => po.status === "completed"
   ).length;
 
   if (loading) {
@@ -651,13 +662,13 @@ export default function PengurusPOPage() {
                                   </button>
                                 );
                               }
-                              if (action.needsInput === "verify_payment") {
+                              if (action.needsInput === "upload_payment_proof") {
                                 return (
                                   <button
                                     onClick={() => setPaymentModalPoId(po.id)}
                                     className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 font-medium transition"
                                   >
-                                    <CheckCircle2 className="w-3 h-3" /> Verifikasi
+                                    <Upload className="w-3 h-3" /> Bukti Bayar
                                   </button>
                                 );
                               }
@@ -910,40 +921,41 @@ export default function PengurusPOPage() {
         </div>
       )}
 
-      {/* ── Payment Verification Modal (staf akunting) ── */}
+      {/* ── Payment Proof Upload Modal (staf akunting) ── */}
       {paymentModalPoId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Verifikasi Pembayaran</h3>
-              <button onClick={() => { setPaymentModalPoId(null); setPaymentVerified(false); }} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-lg font-semibold text-gray-900">Upload Bukti Pembayaran</h3>
+              <button onClick={() => { setPaymentModalPoId(null); setPaymentProofFile(null); }} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
               <p className="text-sm text-amber-800">
-                Pastikan pembayaran untuk PO ini sudah diterima dan dicatat dengan benar sebelum menyelesaikan PO.
+                Upload bukti pembayaran masuk (foto/scan) untuk menyelesaikan PO ini. Pastikan dokumen terlihat jelas.
               </p>
             </div>
-            <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition">
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-700">Bukti Pembayaran Masuk <span className="text-red-500">*</span></label>
               <input
-                type="checkbox"
-                checked={paymentVerified}
-                onChange={(e) => setPaymentVerified(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                type="file"
+                accept="image/*,.pdf"
+                onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+                className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-600 hover:file:bg-emerald-100 transition cursor-pointer"
               />
-              <span className="text-sm text-gray-700 font-medium">
-                Saya memverifikasi bahwa pembayaran sudah dilakukan dan dicatat
-              </span>
-            </label>
+              {paymentProofFile && (
+                <p className="text-xs text-gray-500">File: {paymentProofFile.name}</p>
+              )}
+            </div>
             <div className="flex gap-3 mt-5">
-              <button onClick={() => { setPaymentModalPoId(null); setPaymentVerified(false); }} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Batal</button>
+              <button onClick={() => { setPaymentModalPoId(null); setPaymentProofFile(null); }} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition">Batal</button>
               <button
-                onClick={() => handlePaymentVerification(paymentModalPoId)}
-                disabled={!paymentVerified || paymentSaving}
+                onClick={() => handlePaymentProofUpload(paymentModalPoId)}
+                disabled={!paymentProofFile || paymentSaving}
                 className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
-                {paymentSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</> : <><CheckCircle2 className="w-4 h-4" /> PO Selesai</>}
+                {paymentSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengupload...</> : <><CheckCircle2 className="w-4 h-4" /> Selesaikan PO</>}
               </button>
             </div>
           </div>

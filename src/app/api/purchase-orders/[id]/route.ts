@@ -75,9 +75,8 @@ export async function PATCH(
       updateData.goodsDeliveredAt = new Date();
     } else if (parsed.data.status === "invoicing") {
       updateData.invoiceDate = new Date();
-    } else if (parsed.data.status === "payment_received") {
-      updateData.paymentDate = new Date();
     } else if (parsed.data.status === "completed") {
+      updateData.paymentDate = new Date();
       updateData.completedAt = new Date();
     }
 
