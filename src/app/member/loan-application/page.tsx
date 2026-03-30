@@ -664,10 +664,13 @@ export default function LoanApplicationPage() {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
-            <div className="rounded-xl bg-gray-50 border border-gray-200 p-5 max-h-80 overflow-y-auto">
-              <ul className="list-disc list-inside space-y-2 text-sm text-gray-700">
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-5 max-h-80 overflow-y-auto flex justify-center">
+              <ul className="space-y-3 text-sm text-gray-700 max-w-md">
                 {termsConfig.items.map((item, i) => (
-                  <li key={i}>{item}</li>
+                  <li key={i} className="flex items-start gap-2.5">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
+                    <span className="text-justify">{item}</span>
+                  </li>
                 ))}
               </ul>
             </div>
