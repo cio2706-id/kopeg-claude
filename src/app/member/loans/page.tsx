@@ -28,7 +28,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import {
   formatCurrency,
   LOAN_TYPE_LABELS,
-  LOAN_STATUS_LABELS,
+  LOAN_STATUS_LABELS_MEMBER,
 } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -428,7 +428,7 @@ export default function LoansPage() {
                             </span>
                           )}
                           <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${statusBadgeClass(loan.status)}`}>
-                            {LOAN_STATUS_LABELS[loan.status] || loan.status}
+                            {LOAN_STATUS_LABELS_MEMBER[loan.status] || loan.status}
                           </span>
                         </div>
                         <p className="font-semibold text-gray-900 text-sm">
@@ -766,7 +766,7 @@ export default function LoansPage() {
                           </span>
                         )}
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${statusBadgeClass(loan.status)}`}>
-                          {LOAN_STATUS_LABELS[loan.status] || loan.status}
+                          {LOAN_STATUS_LABELS_MEMBER[loan.status] || loan.status}
                         </span>
                       </div>
                       <p className="font-semibold text-gray-900 text-sm">

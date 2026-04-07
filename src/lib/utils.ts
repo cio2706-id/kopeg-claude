@@ -115,6 +115,26 @@ export const LOAN_STATUS_LABELS: Record<string, string> = {
   held: "Ditunda",
 };
 
+// Simplified labels for anggota — hides who is reviewing, only shows step number
+export const LOAN_STATUS_LABELS_MEMBER: Record<string, string> = {
+  draft: "Draft",
+  pending_sekper: "On Review I",
+  pending_treasury: "On Review",
+  analysis: "On Review",
+  pending_manager: "On Review II",
+  pending_bendahara: "On Review III",
+  pending_ketua: "On Review IV",
+  approved: "Disetujui",
+  spp_process: "Proses SPP",
+  bank_process: "Proses Bank",
+  antrian_pembayaran: "Antrian Pembayaran",
+  disbursed: "Dicairkan",
+  rejected: "Ditolak",
+  on_review: "On Review",
+  selesai: "Selesai",
+  held: "Ditunda",
+};
+
 export const PO_STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Diajukan",
