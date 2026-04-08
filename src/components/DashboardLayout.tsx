@@ -163,6 +163,30 @@ export default function DashboardLayout({
     return () => { cancelled = true; clearInterval(interval); };
   }, [variant]);
 
+  // Gate anggota pages on profile completion: if a member hasn't finished
+  // first-time setup yet, redirect them to the onboarding wizard.
+  useEffect(() => {
+    if (variant !== "member") return;
+    if (pathname?.startsWith("/member/onboarding")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/users/me");
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const u = data.user;
+        if (u && u.role === "member" && (!u.profileCompleted || !u.passwordChanged)) {
+          router.replace("/member/onboarding");
+        }
+      } catch {
+        // Silently ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [variant, pathname, router]);
+
   // Close bell dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

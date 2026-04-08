@@ -5,7 +5,18 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ROLE_LABELS } from "@/lib/utils";
-import { Settings, UserCircle, Bell, ShieldCheck } from "lucide-react";
+import {
+  Settings,
+  UserCircle,
+  Bell,
+  ShieldCheck,
+  Lock,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 export default function PengurusSettingsPage() {
   const [userName, setUserName] = useState("");
@@ -14,8 +25,89 @@ export default function PengurusSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [autoApproveLimit, setAutoApproveLimit] = useState("500000");
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
+
+  async function handleChangePassword() {
+    setPasswordMessage(null);
+
+    if (!currentPassword) {
+      setPasswordMessage({
+        type: "error",
+        text: "Password saat ini wajib diisi",
+      });
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordMessage({
+        type: "error",
+        text: "Password baru minimal 8 karakter",
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({
+        type: "error",
+        text: "Konfirmasi password tidak cocok",
+      });
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      // Verify current password by re-authenticating
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+      if (signInError) {
+        setPasswordMessage({
+          type: "error",
+          text: "Password saat ini salah",
+        });
+        setSavingPassword(false);
+        return;
+      }
+
+      // Update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) {
+        setPasswordMessage({ type: "error", text: updateError.message });
+        setSavingPassword(false);
+        return;
+      }
+
+      setPasswordMessage({
+        type: "success",
+        text: "Password berhasil diubah",
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      console.error(err);
+      setPasswordMessage({
+        type: "error",
+        text: "Terjadi kesalahan, silakan coba lagi",
+      });
+    } finally {
+      setSavingPassword(false);
+    }
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -119,6 +211,115 @@ export default function PengurusSettingsPage() {
 
         {/* System Settings */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Change Password */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <Lock className="w-5 h-5 text-gray-400" />
+              <h2 className="font-semibold text-gray-900">Ubah Password</h2>
+            </div>
+
+            {passwordMessage && (
+              <div
+                className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${
+                  passwordMessage.type === "success"
+                    ? "bg-teal-50 border-teal-100"
+                    : "bg-red-50 border-red-100"
+                }`}
+              >
+                {passwordMessage.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                )}
+                <p
+                  className={`text-sm ${
+                    passwordMessage.type === "success"
+                      ? "text-teal-800"
+                      : "text-red-600"
+                  }`}
+                >
+                  {passwordMessage.text}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                  Password Saat Ini
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full bg-gray-100 rounded-xl px-4 py-2.5 pr-11 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-teal-200 transition"
+                    placeholder="Password yang Anda gunakan saat ini"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                    Password Baru
+                  </label>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-teal-200 transition"
+                    placeholder="Minimal 8 karakter"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                    Konfirmasi Password Baru
+                  </label>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-gray-100 rounded-xl px-4 py-2.5 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-teal-200 transition"
+                    placeholder="Ulangi password baru"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={handleChangePassword}
+                  disabled={savingPassword}
+                  className="bg-gray-900 hover:bg-gray-800 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition disabled:opacity-60"
+                >
+                  {savingPassword ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Memperbarui...
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      Ubah Password
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Email Notifications */}
           <div className="bg-white rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">

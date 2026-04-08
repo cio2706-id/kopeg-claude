@@ -37,6 +37,21 @@ export default function MemberLoginPage() {
       // Non-blocking sync
     }
 
+    // Check if profile setup is complete; if not, route to onboarding wizard.
+    try {
+      const meRes = await fetch("/api/users/me");
+      if (meRes.ok) {
+        const data = await meRes.json();
+        const u = data.user;
+        if (u && (!u.profileCompleted || !u.passwordChanged)) {
+          router.push("/member/onboarding");
+          return;
+        }
+      }
+    } catch {
+      // If the check fails, fall through to dashboard.
+    }
+
     router.push("/member/dashboard");
   }
 
