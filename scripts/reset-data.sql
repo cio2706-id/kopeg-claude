@@ -60,7 +60,7 @@ TRUNCATE TABLE users CASCADE;
 DELETE FROM auth.users;
 
 -- Re-enable triggers
-SET session_replication_role = 'DEFAULT';
+SET session_replication_role = 'origin';
 
 COMMIT;
 
@@ -104,7 +104,7 @@ TRUNCATE TABLE loan_quotas CASCADE;
 TRUNCATE TABLE promotions CASCADE;
 TRUNCATE TABLE calendar_events CASCADE;
 
-SET session_replication_role = 'DEFAULT';
+SET session_replication_role = 'origin';
 
 COMMIT;
 
@@ -167,7 +167,7 @@ WHERE user_id IN (SELECT id FROM users WHERE role = 'member');
 -- 7. Delete the member users themselves; pengurus rows stay intact.
 DELETE FROM users WHERE role = 'member';
 
-SET session_replication_role = 'DEFAULT';
+SET session_replication_role = 'origin';
 
 COMMIT;
 

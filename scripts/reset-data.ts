@@ -272,7 +272,7 @@ async function main() {
       }
     }
 
-    await sql.unsafe(`SET session_replication_role = 'DEFAULT'`);
+    await sql.unsafe(`SET session_replication_role = 'origin'`);
 
     console.log("\n─── Done ────────────────────────────────────────────────────");
     console.log("  All data has been reset successfully!");
