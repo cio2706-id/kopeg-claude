@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:reset": "npx tsx scripts/reset-data.ts",
+    "db:reset:keep-users": "npx tsx scripts/reset-data.ts --keep-users",
+    "db:reset:dry-run": "npx tsx scripts/reset-data.ts --dry-run"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
