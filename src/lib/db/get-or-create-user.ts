@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import type { User as AuthUser } from "@supabase/supabase-js";
@@ -43,10 +43,11 @@ export async function getOrCreateUser(authUser: AuthUser) {
   const authRole = getAuthMetadataRole(authUser);
 
   // 1. Try by authId
-  let [dbUser] = await db
-    .select()
-    .from(users)
-    .where(eq(users.authId, authUser.id));
+  // Wrapped in withDbRetry because this is the first query on most requests,
+  // so it's the one most likely to hit a stale pooler socket (ECONNRESET).
+  let [dbUser] = await withDbRetry(() =>
+    db.select().from(users).where(eq(users.authId, authUser.id))
+  );
 
   if (dbUser) {
     // Sync role from auth metadata if DB role is still default "member"
