@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import { purchaseOrders, poItems, approvals } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
@@ -165,14 +165,18 @@ export async function GET(request: NextRequest) {
     const myOnly = searchParams.get("my") === "true";
     if (myOnly) {
       const dbUser = await getOrCreateUser(user);
-      const myPOs = await db
-        .select()
-        .from(purchaseOrders)
-        .where(eq(purchaseOrders.userId, dbUser.id));
+      const myPOs = await withDbRetry(() =>
+        db
+          .select()
+          .from(purchaseOrders)
+          .where(eq(purchaseOrders.userId, dbUser.id))
+      );
       return NextResponse.json({ purchaseOrders: myPOs });
     }
 
-    const allPOs = await db.select().from(purchaseOrders);
+    const allPOs = await withDbRetry(() =>
+      db.select().from(purchaseOrders)
+    );
     return NextResponse.json({ purchaseOrders: allPOs });
   } catch (error) {
     console.error("Failed to fetch purchase orders:", error);

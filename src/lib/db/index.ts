@@ -24,18 +24,30 @@ export const db = drizzle(client, { schema });
 /**
  * Run a DB operation with retries on transient connection errors.
  *
- * Supabase's pooler occasionally closes sockets that the driver still holds,
- * which surfaces as ECONNRESET / ETIMEDOUT / ECONNREFUSED on the next query.
- * The driver will open a fresh socket on the retry, so one or two attempts
- * are usually enough to recover transparently.
+ * Supabase's pooler occasionally drops or fails to establish connections,
+ * which surfaces as one of the codes below. The driver will open a fresh
+ * socket on the retry, so one or two attempts are usually enough to
+ * recover transparently.
+ *
+ * Includes both Node's standard errno-style codes (ECONNRESET, ETIMEDOUT,
+ * ...) and postgres-js's driver-specific codes (CONNECT_TIMEOUT,
+ * CONNECTION_ENDED, ...). postgres-js puts its code on both `err.code` and
+ * `err.cause.code`, so we check both.
  */
 const TRANSIENT_ERROR_CODES = new Set([
+  // Node socket errors
   "ECONNRESET",
   "ETIMEDOUT",
   "ECONNREFUSED",
   "EPIPE",
   "ENOTFOUND",
   "EAI_AGAIN",
+  // postgres-js driver codes
+  "CONNECT_TIMEOUT",
+  "CONNECTION_ENDED",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_CONNECT_TIMEOUT",
 ]);
 
 function isTransientDbError(err: unknown): boolean {
