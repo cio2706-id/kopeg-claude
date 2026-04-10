@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { savings, uploadLogs } from "@/lib/db/schema";
+import { savings, users, uploadLogs } from "@/lib/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrCreateUser } from "@/lib/db/get-or-create-user";
-import { findMemberByIdOrName } from "@/lib/db/find-member";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import * as XLSX from "xlsx";
+
+// Insert savings rows in chunks to avoid hitting Postgres bind-param limits.
+const INSERT_CHUNK_SIZE = 500;
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     // Find the main data sheet (try common names)
     const sheetNames = workbook.SheetNames;
-    let sheetName = sheetNames.find(s =>
+    const sheetName = sheetNames.find(s =>
       s.toLowerCase().includes("all simpanan") ||
       s.toLowerCase().includes("simpanan") ||
       s.toLowerCase().includes("all")
@@ -97,8 +99,38 @@ export async function POST(request: NextRequest) {
       colMap = { noAnggota: 1, nama: 2, wajib: 4, pokok: 5, khusus: 6, sukarela: 7, shu: 8, jumlah: 9 };
     }
 
+    // ── Pre-fetch all users once to avoid N+1 queries ───────────────────────
+    // The previous implementation ran 3 DB queries per row (find user, delete,
+    // insert), which pushed large uploads past the 5-minute mark. We now load
+    // the user table once and resolve matches in-memory.
+    const allUsers = await db
+      .select({
+        id: users.id,
+        employeeId: users.employeeId,
+        fullName: users.fullName,
+      })
+      .from(users);
+
+    const byEmployeeId = new Map<string, string>();
+    const byFullNameLower = new Map<string, string>();
+    for (const u of allUsers) {
+      if (u.employeeId) {
+        byEmployeeId.set(u.employeeId.trim(), u.id);
+      }
+      if (u.fullName) {
+        byFullNameLower.set(u.fullName.trim().toLowerCase(), u.id);
+      }
+    }
+
+    const parseNum = (v: string | number | null) => {
+      if (v === null || v === undefined || v === "" || v === "-") return 0;
+      const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[,.\s]/g, ""));
+      return isNaN(n) ? 0 : n;
+    };
+
     const batchId = `simpanan_${period}_${Date.now()}`;
-    let processed = 0;
+    const rowsToInsert: Array<typeof savings.$inferInsert> = [];
+    const processedUserIds = new Set<string>();
     let skipped = 0;
     let totalAmount = 0;
     const errors: string[] = [];
@@ -111,24 +143,36 @@ export async function POST(request: NextRequest) {
       const nama = row[colMap.nama];
 
       if (!noAnggota && !nama) continue;
-      if (String(nama || "").toLowerCase().includes("jumlah") || String(nama || "").toLowerCase().includes("total")) continue;
-      if (String(nama || "").toLowerCase().includes("bukan anggota")) continue;
+      const namaLower = String(nama || "").toLowerCase();
+      if (namaLower.includes("jumlah") || namaLower.includes("total")) continue;
+      if (namaLower.includes("bukan anggota")) continue;
 
-      const userId = await findMemberByIdOrName(
-        noAnggota != null ? String(noAnggota) : null,
-        nama != null ? String(nama) : null
-      );
+      // Resolve user: employeeId first, then fullName (case-insensitive)
+      let userId: string | undefined;
+      if (noAnggota != null) {
+        const id = String(noAnggota).trim();
+        if (id) userId = byEmployeeId.get(id);
+      }
+      if (!userId && nama != null) {
+        const cleanName = String(nama).trim();
+        if (cleanName && cleanName.length > 2) {
+          userId = byFullNameLower.get(cleanName.toLowerCase());
+        }
+      }
+
       if (!userId) {
         skipped++;
         if (skipped <= 20) errors.push(`Row ${i + 1}: "${nama}" (${noAnggota}) - not found`);
         continue;
       }
 
-      const parseNum = (v: string | number | null) => {
-        if (v === null || v === undefined || v === "" || v === "-") return 0;
-        const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[,.\s]/g, ""));
-        return isNaN(n) ? 0 : n;
-      };
+      // If a file has two rows for the same user, keep the last one (same
+      // semantics as the previous per-row delete-then-insert loop).
+      if (processedUserIds.has(userId)) {
+        const existingIdx = rowsToInsert.findIndex((r) => r.userId === userId);
+        if (existingIdx >= 0) rowsToInsert.splice(existingIdx, 1);
+      }
+      processedUserIds.add(userId);
 
       const wajib = parseNum(row[colMap.wajib]);
       const pokok = parseNum(row[colMap.pokok]);
@@ -137,12 +181,7 @@ export async function POST(request: NextRequest) {
       const shu = colMap.shu >= 0 ? parseNum(row[colMap.shu]) : 0;
       const jumlah = colMap.jumlah >= 0 ? parseNum(row[colMap.jumlah]) : (wajib + pokok + khusus + sukarela + shu);
 
-      // Upsert: delete existing for this user+period, then insert
-      await db.delete(savings).where(
-        and(eq(savings.userId, userId), eq(savings.period, period))
-      );
-
-      await db.insert(savings).values({
+      rowsToInsert.push({
         userId,
         period,
         simpananWajib: wajib.toString(),
@@ -155,7 +194,29 @@ export async function POST(request: NextRequest) {
       });
 
       totalAmount += jumlah;
-      processed++;
+    }
+
+    // ── Bulk upsert in a single transaction ──────────────────────────────────
+    // Delete existing rows for the matched users in this period, then bulk
+    // insert the new rows in chunks. This replaces ~3N round-trips with a
+    // handful of round-trips regardless of file size.
+    if (rowsToInsert.length > 0) {
+      const userIds = Array.from(processedUserIds);
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(savings)
+          .where(
+            and(
+              eq(savings.period, period),
+              inArray(savings.userId, userIds)
+            )
+          );
+
+        for (let i = 0; i < rowsToInsert.length; i += INSERT_CHUNK_SIZE) {
+          const chunk = rowsToInsert.slice(i, i + INSERT_CHUNK_SIZE);
+          await tx.insert(savings).values(chunk);
+        }
+      });
     }
 
     // Log the upload
@@ -163,14 +224,14 @@ export async function POST(request: NextRequest) {
       uploadType: "simpanan_saldo",
       period,
       fileName: file.name,
-      recordCount: processed,
+      recordCount: rowsToInsert.length,
       totalAmount: totalAmount.toString(),
       uploadedBy: dbUser.id,
     });
 
     return NextResponse.json({
       success: true,
-      processed,
+      processed: rowsToInsert.length,
       skipped,
       totalAmount,
       errors: errors.slice(0, 20),
