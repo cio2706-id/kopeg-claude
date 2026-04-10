@@ -261,8 +261,18 @@ export async function GET() {
     // Calculate total for bell badge
     const totalNotifications = notifications.length;
 
+    // Split by reference type so the sidebar can show separate badges for
+    // "Persetujuan Pinjaman" and "Persetujuan PO".
+    const pendingLoanApprovals = myApprovals.filter(
+      (a) => a.referenceType === "loan"
+    ).length;
+    const pendingPoApprovals = myApprovals.filter(
+      (a) => a.referenceType === "purchase_order"
+    ).length;
+
     return NextResponse.json({
-      pendingApprovals: myApprovals.length,
+      pendingLoanApprovals,
+      pendingPoApprovals,
       pendingSppLoans,
       pendingSppPOs,
       pendingSppApprovals,

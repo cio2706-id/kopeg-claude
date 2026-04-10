@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Wallet,
@@ -59,8 +59,8 @@ const memberNav: NavItem[] = [
 const pengurusNav: NavItem[] = [
   { label: "Dashboard", href: "/pengurus/dashboard", icon: <LayoutDashboard className="w-5 h-5" />, section: "MENU" },
   { label: "Anggota", href: "/pengurus/members", icon: <Users className="w-5 h-5" /> },
-  { label: "Persetujuan", href: "/pengurus/approvals", icon: <CheckSquare className="w-5 h-5" />, badgeKey: "pendingApprovals" },
-  { label: "Persetujuan Pinjaman", href: "/pengurus/approvals?tab=loan", icon: <CreditCard className="w-5 h-5" />, badgeKey: "pendingApprovals", roles: ["staf_sekper", "manager", "bendahara", "ketua"] },
+  { label: "Persetujuan Pinjaman", href: "/pengurus/approvals?tab=loan", icon: <CreditCard className="w-5 h-5" />, badgeKey: "pendingLoanApprovals", roles: ["staf_sekper", "manager", "bendahara", "ketua"] },
+  { label: "Persetujuan PO", href: "/pengurus/approvals?tab=purchase_order", icon: <CheckSquare className="w-5 h-5" />, badgeKey: "pendingPoApprovals", roles: ["staf_pengadaan", "manager"] },
   { label: "Purchase Order", href: "/pengurus/po", icon: <ShoppingCart className="w-5 h-5" />, badgeKey: "pendingPoTasks" },
   { label: "Pinjaman", href: "/pengurus/loans", icon: <CreditCard className="w-5 h-5" /> },
   { label: "SPP", href: "/pengurus/spp", icon: <FileText className="w-5 h-5" />, badgeKey: "totalSpp" },
@@ -136,6 +136,7 @@ export default function DashboardLayout({
   const bellRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const allNavItems = variant === "pengurus" ? pengurusNav : memberNav;
   const navItems = allNavItems.filter(
     (item) => !item.roles || item.roles.includes(userRole)
@@ -232,8 +233,16 @@ export default function DashboardLayout({
         {/* Navigation */}
         <nav className="flex-1 px-4 overflow-y-auto">
           {navItems.map((item, index) => {
-            const hrefPath = item.href.split("?")[0];
-            const isActive = pathname === hrefPath || pathname.startsWith(hrefPath + "/");
+            const [hrefPath, hrefQuery] = item.href.split("?");
+            const onSamePath = pathname === hrefPath || pathname.startsWith(hrefPath + "/");
+            // When two nav items share a pathname but differ by query (e.g.
+            // ?tab=loan vs ?tab=purchase_order), disambiguate by matching the
+            // `tab` param so only the correct entry highlights as active.
+            let isActive = onSamePath;
+            if (onSamePath && hrefQuery) {
+              const itemTab = new URLSearchParams(hrefQuery).get("tab");
+              isActive = searchParams.get("tab") === itemTab;
+            }
             const badgeCount = item.badgeKey ? (badges[item.badgeKey] || 0) : 0;
             return (
               <div key={item.href + item.label}>
